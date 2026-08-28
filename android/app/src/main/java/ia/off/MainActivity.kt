@@ -52,7 +52,6 @@ fun OffiaChatScreen() {
         try {
             context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
         } catch (_: SecurityException) {
-            // Some document providers keep the current grant without offering a persistable grant.
         }
         modelUri = uri.toString()
         modelName = name
@@ -60,6 +59,7 @@ fun OffiaChatScreen() {
     }
 
     Scaffold(
+        contentWindowInsets = WindowInsets.safeDrawing,
         topBar = {
             Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
                 Text("OFF.IA", style = MaterialTheme.typography.headlineMedium)
@@ -71,23 +71,30 @@ fun OffiaChatScreen() {
             }
         },
         bottomBar = {
-            Column(Modifier.padding(12.dp)) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .imePadding()
+                    .navigationBarsPadding()
+                    .padding(horizontal = 12.dp, vertical = 10.dp)
+            ) {
                 Text(
                     "Memoria: integração pendente • Inferência: ${if (modelUri == null) "sem modelo" else "GGUF local selecionado"}",
                     style = MaterialTheme.typography.labelSmall
                 )
-                Spacer(Modifier.height(6.dp))
-                Row {
+                Spacer(Modifier.height(8.dp))
+                Row(Modifier.fillMaxWidth()) {
                     OutlinedTextField(
                         value = input,
                         onValueChange = { input = it },
                         modifier = Modifier.weight(1f),
                         placeholder = { Text("Digite uma mensagem…") },
-                        singleLine = false
+                        maxLines = 4
                     )
                     Spacer(Modifier.width(8.dp))
                     Button(
                         enabled = input.isNotBlank() && modelUri != null,
+                        modifier = Modifier.heightIn(min = 56.dp),
                         onClick = {
                             val text = input.trim()
                             input = ""
