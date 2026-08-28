@@ -13,8 +13,8 @@ android {
         applicationId = "ia.off"
         minSdk = 33
         targetSdk = 36
-        versionCode = 4
-        versionName = "0.1.0-alpha.4"
+        versionCode = 5
+        versionName = "0.1.0-alpha.5"
 
         ndk {
             abiFilters += listOf("arm64-v8a")
