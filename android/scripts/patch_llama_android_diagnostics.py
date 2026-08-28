@@ -29,6 +29,21 @@ addition = '''    g_model = model;\n    return 0;\n}\n\nextern "C"\nJNIEXPORT js
 if marker not in cpp_text:
     raise SystemExit("ai_chat.cpp anchor 3 not found")
 cpp_text = cpp_text.replace(marker, addition, 1)
+
+# The llama.android example only formats chat messages when the GGUF declares an
+# explicit chat template. Some third-party SmolLM2 GGUF conversions omit that
+# metadata. common_chat_templates_init() still supplies llama.cpp's ChatML
+# fallback, which matches SmolLM2's <|im_start|>/<|im_end|> format. Use it for
+# both system and user turns instead of feeding raw text to an instruct model.
+chat_template_probe = 'const bool has_chat_template = common_chat_templates_was_explicit(g_chat_templates.get());'
+count = cpp_text.count(chat_template_probe)
+if count < 2:
+    raise SystemExit(f"expected at least 2 chat-template probes, found {count}")
+cpp_text = cpp_text.replace(
+    chat_template_probe,
+    'const bool has_chat_template = true; // OFF.IA: use llama.cpp ChatML fallback when GGUF metadata omits a template',
+)
+
 cpp.write_text(cpp_text, encoding="utf-8")
 
 kt_text = kt.read_text(encoding="utf-8")
@@ -45,4 +60,4 @@ if needle not in kt_text:
 kt_text = kt_text.replace(needle, replacement, 1)
 kt.write_text(kt_text, encoding="utf-8")
 
-print("OFFIA_LLAMA_DIAGNOSTICS_V2: patched llama.android loader diagnostics")
+print(f"OFFIA_LLAMA_CHAT_V3: diagnostics + ChatML fallback patched ({count} chat sites)")
