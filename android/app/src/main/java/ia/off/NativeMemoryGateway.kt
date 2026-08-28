@@ -7,7 +7,14 @@ import java.io.File
 
 class NativeMemoryGateway(context: Context) : MemoryGateway, AutoCloseable {
     companion object {
-        private const val STORAGE_GENERATION = "memoria-v2"
+        /**
+         * Durable Memoria.ia storage root for the installed OFF.IA application.
+         *
+         * IMPORTANT: do not change this directory merely because the APK version
+         * changes. Future schema evolution must use explicit migrations in the
+         * owning dependency so an in-place Android app update preserves memory.
+         */
+        private const val DURABLE_STORAGE_ROOT = "memoria-v2"
 
         init {
             System.loadLibrary("offia-memory")
@@ -17,11 +24,7 @@ class NativeMemoryGateway(context: Context) : MemoryGateway, AutoCloseable {
     private var handle: Long
 
     init {
-        // Alpha storage generation. v2 intentionally starts clean after the first
-        // device tests learned degenerate LLM output while the chat-template bug
-        // was still present. This avoids evaluating the fixed runtime against
-        // contaminated test memories; it is not a production migration policy.
-        val storage = File(context.filesDir, STORAGE_GENERATION).apply { mkdirs() }
+        val storage = File(context.filesDir, DURABLE_STORAGE_ROOT).apply { mkdirs() }
         handle = nativeOpen(storage.absolutePath)
         check(handle != 0L) { "Falha ao abrir Memoria.ia nativa" }
     }
