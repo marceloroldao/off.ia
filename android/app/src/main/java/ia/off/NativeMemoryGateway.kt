@@ -3,19 +3,14 @@ package ia.off
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 
 class NativeMemoryGateway(context: Context) : MemoryGateway, AutoCloseable {
     companion object {
-        /**
-         * Durable Memoria.ia storage root for the installed OFF.IA application.
-         *
-         * IMPORTANT: do not change this directory merely because the APK version
-         * changes. Future schema evolution must use explicit migrations in the
-         * owning dependency so an in-place Android app update preserves memory.
-         */
         private const val DURABLE_STORAGE_ROOT = "memoria-v2"
+        private const val MAX_TRAJECTORY_TURNS = 8
 
         init {
             System.loadLibrary("offia-memory")
@@ -33,8 +28,29 @@ class NativeMemoryGateway(context: Context) : MemoryGateway, AutoCloseable {
     override val available: Boolean
         get() = handle != 0L
 
-    override suspend fun resolve(message: String): MemoryResolution = withContext(Dispatchers.IO) {
-        val json = JSONObject(nativeResolve(requireHandle(), message))
+    override suspend fun resolve(
+        message: String,
+        sessionId: String?,
+        conversationWindow: List<MemoryWindowTurn>,
+    ): MemoryResolution = withContext(Dispatchers.IO) {
+        val request = JSONObject().apply {
+            put("query", message)
+            if (!sessionId.isNullOrBlank() && conversationWindow.isNotEmpty()) {
+                put("session_id", sessionId)
+                val window = JSONArray()
+                conversationWindow.takeLast(MAX_TRAJECTORY_TURNS).forEach { turn ->
+                    window.put(JSONObject().apply {
+                        put("session_id", sessionId)
+                        put("role", turn.role)
+                        put("text", turn.text)
+                        put("order", turn.order)
+                    })
+                }
+                put("conversation_window", window)
+            }
+        }
+
+        val json = JSONObject(nativeResolve(requireHandle(), request.toString()))
         val status = when (json.optString("status")) {
             "HIT" -> MemoryStatus.HIT
             "MISS" -> MemoryStatus.MISS
@@ -58,6 +74,8 @@ class NativeMemoryGateway(context: Context) : MemoryGateway, AutoCloseable {
             contextItems = if (status == MemoryStatus.HIT && context.isNotBlank()) listOf(context) else emptyList(),
             memoryIds = memoryIds,
             confidence = confidence.takeUnless { it.isNaN() },
+            trajectoryUsed = json.optBoolean("trajectory_used", false),
+            conversationWindowCount = json.optInt("conversation_window_count", 0),
         )
     }
 
@@ -94,7 +112,7 @@ class NativeMemoryGateway(context: Context) : MemoryGateway, AutoCloseable {
 
     private external fun nativeOpen(path: String): Long
     private external fun nativeClose(handle: Long)
-    private external fun nativeResolve(handle: Long, message: String): String
+    private external fun nativeResolve(handle: Long, requestJson: String): String
     private external fun nativeLearn(handle: Long, user: String, assistant: String): String
     private external fun nativeFlush(handle: Long)
 }
