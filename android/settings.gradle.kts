@@ -16,3 +16,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "OFF.IA"
 include(":app")
+include(":llama-lib")
+project(":llama-lib").projectDir = file("vendor/llama.cpp/examples/llama.android/lib")
