@@ -1,5 +1,6 @@
 package ia.off
 
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
@@ -16,8 +17,24 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.arm.aichat.AiChat
+import com.arm.aichat.InferenceEngine
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.FileOutputStream
 
 data class ChatMessage(val role: String, val text: String)
+
+private const val PREFS = "offia-local"
+private const val PREF_MODEL_PATH = "model-path"
+private const val PREF_MODEL_NAME = "model-name"
+private const val SYSTEM_PROMPT =
+    "Você é OFF.IA, um assistente local e offline. Responda de forma clara e concisa. " +
+        "Não afirme que consultou a internet. Quando contexto da Memoria.ia for fornecido, priorize esse contexto."
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -26,21 +43,92 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private fun displayNameForUri(context: android.content.Context, uri: Uri): String? =
+private fun displayNameForUri(context: Context, uri: Uri): String? =
     context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
         if (!cursor.moveToFirst()) return@use null
         val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
         if (index < 0) null else cursor.getString(index)
     }
 
+private suspend fun importModel(context: Context, uri: Uri, displayName: String): File =
+    withContext(Dispatchers.IO) {
+        val models = File(context.filesDir, "models").apply { mkdirs() }
+        val safeName = displayName.replace(Regex("[^A-Za-z0-9._-]"), "_")
+        val target = File(models, safeName)
+        val temp = File(models, "$safeName.part")
+
+        context.contentResolver.openInputStream(uri).use { input ->
+            requireNotNull(input) { "Não foi possível abrir o modelo selecionado" }
+            FileOutputStream(temp).use { output ->
+                input.copyTo(output, bufferSize = 1024 * 1024)
+                output.fd.sync()
+            }
+        }
+
+        require(temp.length() > 0L) { "Modelo GGUF vazio" }
+        if (target.exists()) target.delete()
+        check(temp.renameTo(target)) { "Falha ao concluir a importação do GGUF" }
+        target
+    }
+
+private suspend fun waitUntilInitialized(engine: InferenceEngine) {
+    when (engine.state.value) {
+        is InferenceEngine.State.Initialized -> return
+        is InferenceEngine.State.ModelReady -> return
+        else -> Unit
+    }
+    val state = engine.state.first {
+        it is InferenceEngine.State.Initialized ||
+            it is InferenceEngine.State.ModelReady ||
+            it is InferenceEngine.State.Error
+    }
+    if (state is InferenceEngine.State.Error) throw state.exception
+}
+
+private suspend fun loadLocalModel(engine: InferenceEngine, file: File) {
+    waitUntilInitialized(engine)
+    when (engine.state.value) {
+        is InferenceEngine.State.ModelReady,
+        is InferenceEngine.State.Error -> withContext(Dispatchers.IO) { engine.cleanUp() }
+        else -> Unit
+    }
+    engine.loadModel(file.absolutePath)
+    engine.setSystemPrompt(SYSTEM_PROMPT)
+}
+
 @Composable
 fun OffiaChatScreen() {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val prefs = remember { context.getSharedPreferences(PREFS, Context.MODE_PRIVATE) }
+    val engine = remember { AiChat.getInferenceEngine(context.applicationContext) }
+
     var input by remember { mutableStateOf("") }
-    var status by remember { mutableStateOf("Offline • selecione um modelo GGUF") }
-    var modelUri by remember { mutableStateOf<String?>(null) }
-    var modelName by remember { mutableStateOf<String?>(null) }
+    var status by remember { mutableStateOf("Offline • inicializando motor local") }
+    var modelName by remember { mutableStateOf(prefs.getString(PREF_MODEL_NAME, null)) }
+    var modelReady by remember { mutableStateOf(false) }
+    var busy by remember { mutableStateOf(false) }
     val messages = remember { mutableStateListOf<ChatMessage>() }
+
+    LaunchedEffect(Unit) {
+        val savedPath = prefs.getString(PREF_MODEL_PATH, null)
+        val savedFile = savedPath?.let(::File)
+        if (savedFile != null && savedFile.isFile) {
+            busy = true
+            status = "Offline • carregando ${modelName ?: "GGUF"}…"
+            try {
+                loadLocalModel(engine, savedFile)
+                modelReady = true
+                status = "Offline • ${modelName ?: "GGUF"} pronto"
+            } catch (e: Exception) {
+                status = "Erro ao carregar modelo • ${e.message ?: e.javaClass.simpleName}"
+            } finally {
+                busy = false
+            }
+        } else {
+            status = "Offline • selecione um modelo GGUF"
+        }
+    }
 
     val modelPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri == null) return@rememberLauncherForActivityResult
@@ -49,13 +137,33 @@ fun OffiaChatScreen() {
             status = "Arquivo inválido • selecione um .gguf"
             return@rememberLauncherForActivityResult
         }
+
         try {
             context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
         } catch (_: SecurityException) {
         }
-        modelUri = uri.toString()
-        modelName = name
-        status = "Offline • GGUF selecionado: $name"
+
+        scope.launch {
+            busy = true
+            modelReady = false
+            status = "Importando $name para o OFF.IA…"
+            try {
+                val localFile = importModel(context, uri, name)
+                status = "Carregando $name no llama.cpp…"
+                loadLocalModel(engine, localFile)
+                modelName = name
+                prefs.edit()
+                    .putString(PREF_MODEL_PATH, localFile.absolutePath)
+                    .putString(PREF_MODEL_NAME, name)
+                    .apply()
+                modelReady = true
+                status = "Offline • $name pronto"
+            } catch (e: Exception) {
+                status = "Erro no modelo • ${e.message ?: e.javaClass.simpleName}"
+            } finally {
+                busy = false
+            }
+        }
     }
 
     Scaffold(
@@ -65,8 +173,11 @@ fun OffiaChatScreen() {
                 Text("OFF.IA", style = MaterialTheme.typography.headlineMedium)
                 Text(status, style = MaterialTheme.typography.bodySmall)
                 Spacer(Modifier.height(8.dp))
-                OutlinedButton(onClick = { modelPicker.launch(arrayOf("*/*")) }) {
-                    Text(if (modelUri == null) "Selecionar modelo GGUF" else "Trocar modelo")
+                OutlinedButton(
+                    enabled = !busy,
+                    onClick = { modelPicker.launch(arrayOf("application/octet-stream", "*/*")) }
+                ) {
+                    Text(if (modelName == null) "Selecionar modelo GGUF" else "Trocar modelo")
                 }
             }
         },
@@ -79,7 +190,7 @@ fun OffiaChatScreen() {
                     .padding(horizontal = 12.dp, vertical = 10.dp)
             ) {
                 Text(
-                    "Memoria: integração pendente • Inferência: ${if (modelUri == null) "sem modelo" else "GGUF local selecionado"}",
+                    "Memoria: integração pendente • Inferência: ${if (modelReady) "llama.cpp local" else "aguardando modelo"}",
                     style = MaterialTheme.typography.labelSmall
                 )
                 Spacer(Modifier.height(8.dp))
@@ -87,23 +198,45 @@ fun OffiaChatScreen() {
                     OutlinedTextField(
                         value = input,
                         onValueChange = { input = it },
+                        enabled = !busy,
                         modifier = Modifier.weight(1f),
                         placeholder = { Text("Digite uma mensagem…") },
                         maxLines = 4
                     )
                     Spacer(Modifier.width(8.dp))
                     Button(
-                        enabled = input.isNotBlank() && modelUri != null,
+                        enabled = input.isNotBlank() && modelReady && !busy,
                         modifier = Modifier.heightIn(min = 56.dp),
                         onClick = {
                             val text = input.trim()
                             input = ""
                             messages += ChatMessage("Você", text)
-                            messages += ChatMessage(
-                                "OFF.IA",
-                                "Modelo ${modelName ?: "GGUF"} selecionado. O motor llama.cpp/JNI será conectado no próximo corte vertical."
-                            )
-                            status = "Offline • modelo selecionado • motor nativo pendente"
+                            messages += ChatMessage("OFF.IA", "…")
+                            val responseIndex = messages.lastIndex
+
+                            scope.launch {
+                                busy = true
+                                status = "Offline • gerando localmente…"
+                                try {
+                                    val answer = StringBuilder()
+                                    engine.sendUserPrompt(text, predictLength = 512).collect { token ->
+                                        answer.append(token)
+                                        messages[responseIndex] = ChatMessage("OFF.IA", answer.toString())
+                                    }
+                                    if (answer.isEmpty()) {
+                                        messages[responseIndex] = ChatMessage("OFF.IA", "O modelo não gerou resposta.")
+                                    }
+                                    status = "Offline • ${modelName ?: "GGUF"} pronto"
+                                } catch (e: Exception) {
+                                    messages[responseIndex] = ChatMessage(
+                                        "OFF.IA",
+                                        "Erro de inferência local: ${e.message ?: e.javaClass.simpleName}"
+                                    )
+                                    status = "Erro de inferência local"
+                                } finally {
+                                    busy = false
+                                }
+                            }
                         }
                     ) { Text("Enviar") }
                 }
