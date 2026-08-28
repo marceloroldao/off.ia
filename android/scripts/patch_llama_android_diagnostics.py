@@ -45,4 +45,4 @@ if needle not in kt_text:
 kt_text = kt_text.replace(needle, replacement, 1)
 kt.write_text(kt_text, encoding="utf-8")
 
-print("Patched llama.android loader diagnostics")
+print("OFFIA_LLAMA_DIAGNOSTICS_V2: patched llama.android loader diagnostics")
