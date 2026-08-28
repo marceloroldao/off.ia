@@ -151,6 +151,48 @@ private suspend fun loadLocalModel(engine: InferenceEngine, file: File): GgufPro
 }
 
 @Composable
+private fun MemoryInspector(
+    status: MemoryStatus,
+    ids: List<String>,
+    confidence: Double?,
+    contextText: String,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    if (status != MemoryStatus.HIT && contextText.isBlank()) return
+
+    TextButton(onClick = { expanded = !expanded }, contentPadding = PaddingValues(0.dp)) {
+        Text(if (expanded) "Ocultar memória usada" else "Ver memória usada")
+    }
+
+    if (expanded) {
+        Surface(
+            tonalElevation = 2.dp,
+            shape = MaterialTheme.shapes.medium,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("Inspeção da Memoria.ia", style = MaterialTheme.typography.titleSmall)
+                Text("Status: $status", style = MaterialTheme.typography.bodySmall)
+                Text(
+                    "IDs: ${if (ids.isEmpty()) "—" else ids.joinToString()}",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                confidence?.let {
+                    Text("Confiança: ${"%.3f".format(it)}", style = MaterialTheme.typography.bodySmall)
+                }
+                Text("Contexto enviado: ${contextText.length} caracteres", style = MaterialTheme.typography.bodySmall)
+                if (contextText.isNotBlank()) {
+                    HorizontalDivider()
+                    Text(contextText, style = MaterialTheme.typography.bodyMedium)
+                } else {
+                    Text("Nenhum contexto foi enviado ao LLM.", style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+        }
+    }
+}
+
+@Composable
 fun OffiaChatScreen() {
     val context = LocalContext.current
     val appContext = context.applicationContext
@@ -182,6 +224,8 @@ fun OffiaChatScreen() {
         mutableStateOf(if (memory.available) MemoryStatus.MISS else MemoryStatus.UNAVAILABLE)
     }
     var lastMemoryIds by remember { mutableStateOf<List<String>>(emptyList()) }
+    var lastMemoryConfidence by remember { mutableStateOf<Double?>(null) }
+    var lastMemoryContext by remember { mutableStateOf("") }
     val messages = remember {
         mutableStateListOf<ChatMessage>().apply {
             addAll(chatStore.load())
@@ -284,6 +328,12 @@ fun OffiaChatScreen() {
                     "Memoria: $memoryLabel$idsLabel • Inferência: ${if (modelReady) "llama.cpp local" else "aguardando modelo"}",
                     style = MaterialTheme.typography.labelSmall
                 )
+                MemoryInspector(
+                    status = lastMemoryStatus,
+                    ids = lastMemoryIds,
+                    confidence = lastMemoryConfidence,
+                    contextText = lastMemoryContext,
+                )
                 Spacer(Modifier.height(8.dp))
                 Row(Modifier.fillMaxWidth()) {
                     OutlinedTextField(
@@ -313,6 +363,8 @@ fun OffiaChatScreen() {
                                     val resolution = memory.resolve(text)
                                     lastMemoryStatus = resolution.status
                                     lastMemoryIds = resolution.memoryIds
+                                    lastMemoryConfidence = resolution.confidence
+                                    lastMemoryContext = resolution.contextItems.joinToString("\n")
                                     val prompt = materializePrompt(text, resolution)
 
                                     status = "Offline • gerando localmente…"
