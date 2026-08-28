@@ -9,12 +9,23 @@ android {
     compileSdk = 36
     ndkVersion = "29.0.13113456"
 
+    signingConfigs {
+        create("alpha") {
+            // Public TEST-ONLY key for install-over-install alpha builds.
+            // Production releases must use a private key from CI secrets.
+            storeFile = rootProject.file("offia-alpha.jks")
+            storePassword = "offia-alpha"
+            keyAlias = "offia-alpha"
+            keyPassword = "offia-alpha"
+        }
+    }
+
     defaultConfig {
         applicationId = "ia.off"
         minSdk = 33
         targetSdk = 36
-        versionCode = 5
-        versionName = "0.1.0-alpha.5"
+        versionCode = 6
+        versionName = "0.1.0-alpha.6"
 
         ndk {
             abiFilters += listOf("arm64-v8a")
@@ -23,6 +34,12 @@ android {
             cmake {
                 arguments += "-DCMAKE_BUILD_TYPE=Release"
             }
+        }
+    }
+
+    buildTypes {
+        getByName("debug") {
+            signingConfig = signingConfigs.getByName("alpha")
         }
     }
 
