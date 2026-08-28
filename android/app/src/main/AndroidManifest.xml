@@ -3,6 +3,7 @@
     <!-- Intentionally no INTERNET permission: the first MVP core path is offline-only. -->
     <application
         android:allowBackup="false"
+        android:extractNativeLibs="true"
         android:label="OFF.IA"
         android:supportsRtl="true"
         android:theme="@style/Theme.Offia">
