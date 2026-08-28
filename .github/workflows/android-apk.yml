@@ -39,14 +39,14 @@ jobs:
         uses: actions/checkout@v6
         with:
           repository: marceloroldao/memoria.ia
-          ref: a45b18457eaaadfc2c4352d59d0c2080d623d7ff
+          ref: f765e2d5bbf4f8f1a64cb9918516a0b3b3023c82
           path: android/vendor/memoria.ia
 
       - name: Checkout pinned Resolutive-DB Android ABI
         uses: actions/checkout@v6
         with:
           repository: marceloroldao/resolutive-DB
-          ref: d6aa823eaf348ed6230e6ee4e15db1f35e5da857
+          ref: 1f6b7ccbe16bdfed2f1b5dcebceb17887bf6916e
           path: android/vendor/resolutive-DB
 
       - name: Set up JDK 17
