@@ -22,11 +22,11 @@ jobs:
           git clone --filter=blob:none https://github.com/ggml-org/llama.cpp llama.cpp
           git -C llama.cpp checkout --detach ca3d5a3e10d53f7ea672cb9b6178faca3e2807bc
 
-      - name: Build llama.cpp CLI
+      - name: Build llama.cpp completion tool
         shell: bash
         run: |
           cmake -S llama.cpp -B llama-build -DGGML_NATIVE=OFF -DLLAMA_CURL=OFF -DCMAKE_BUILD_TYPE=Release
-          cmake --build llama-build --target llama-cli --parallel 2
+          cmake --build llama-build --target llama-completion --parallel 2
 
       - name: Download SmolLM2 135M Q3_K_M GGUF
         shell: bash
@@ -40,7 +40,7 @@ jobs:
       - name: Load model and generate one token
         shell: bash
         run: |
-          timeout 120 ./llama-build/bin/llama-cli \
+          timeout 120 ./llama-build/bin/llama-completion \
             -m smollm2-q3_k_m.gguf \
             -p 'Hello' \
             -n 1 \
