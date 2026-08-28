@@ -38,6 +38,7 @@ data class GgufProbe(val sizeBytes: Long, val version: Int)
 private const val PREFS = "offia-local"
 private const val PREF_MODEL_PATH = "model-path"
 private const val PREF_MODEL_NAME = "model-name"
+private const val ACTIVE_TRAJECTORY_TURNS = 8
 private const val SYSTEM_PROMPT =
     "Você é OFF.IA, um assistente local e offline. Responda de forma clara e concisa. " +
         "Não afirme que consultou a internet. Quando contexto da Memoria.ia for fornecido, priorize esse contexto."
@@ -135,7 +136,14 @@ private suspend fun loadLocalModel(engine: InferenceEngine, file: File): GgufPro
 }
 
 @Composable
-private fun MemoryInspector(status: MemoryStatus, ids: List<String>, confidence: Double?, contextText: String) {
+private fun MemoryInspector(
+    status: MemoryStatus,
+    ids: List<String>,
+    confidence: Double?,
+    contextText: String,
+    trajectoryUsed: Boolean,
+    windowCount: Int,
+) {
     var expanded by remember { mutableStateOf(false) }
     if (status != MemoryStatus.HIT && contextText.isBlank()) return
 
@@ -149,6 +157,7 @@ private fun MemoryInspector(status: MemoryStatus, ids: List<String>, confidence:
                 Text("Status: $status", style = MaterialTheme.typography.bodySmall)
                 Text("IDs: ${if (ids.isEmpty()) "—" else ids.joinToString()}", style = MaterialTheme.typography.bodySmall)
                 confidence?.let { Text("Confiança: ${"%.3f".format(it)}", style = MaterialTheme.typography.bodySmall) }
+                Text("Trajetória: ${if (trajectoryUsed) "usada" else "não usada"} • janela=$windowCount", style = MaterialTheme.typography.bodySmall)
                 Text("Contexto enviado: ${contextText.length} caracteres", style = MaterialTheme.typography.bodySmall)
                 if (contextText.isNotBlank()) {
                     HorizontalDivider()
@@ -219,6 +228,8 @@ fun OffiaChatScreen() {
     var lastMemoryIds by remember { mutableStateOf<List<String>>(emptyList()) }
     var lastMemoryConfidence by remember { mutableStateOf<Double?>(null) }
     var lastMemoryContext by remember { mutableStateOf("") }
+    var lastTrajectoryUsed by remember { mutableStateOf(false) }
+    var lastWindowCount by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(Unit) {
         val savedFile = prefs.getString(PREF_MODEL_PATH, null)?.let(::File)
@@ -283,6 +294,8 @@ fun OffiaChatScreen() {
                                         lastMemoryStatus = if (memory.available) MemoryStatus.MISS else MemoryStatus.UNAVAILABLE
                                         lastMemoryIds = emptyList()
                                         lastMemoryContext = ""
+                                        lastTrajectoryUsed = false
+                                        lastWindowCount = 0
                                         sessionMenuExpanded = false
                                         chatStore.save(ChatWorkspace(sessions.toMutableList(), activeSessionId))
                                     }
@@ -299,6 +312,8 @@ fun OffiaChatScreen() {
                         lastMemoryStatus = if (memory.available) MemoryStatus.MISS else MemoryStatus.UNAVAILABLE
                         lastMemoryIds = emptyList()
                         lastMemoryContext = ""
+                        lastTrajectoryUsed = false
+                        lastWindowCount = 0
                         chatStore.save(ChatWorkspace(sessions.toMutableList(), activeSessionId))
                     }) { Text("Nova") }
                     OutlinedButton(enabled = !busy, onClick = { modelPicker.launch(arrayOf("application/octet-stream", "*/*")) }) {
@@ -319,8 +334,9 @@ fun OffiaChatScreen() {
                     MemoryStatus.UNAVAILABLE -> "indisponível"
                 }
                 val idsLabel = if (lastMemoryIds.isEmpty()) "" else " • ids=${lastMemoryIds.joinToString()}"
-                Text("Memoria: $memoryLabel$idsLabel • Inferência: ${if (modelReady) "llama.cpp local" else "aguardando modelo"}", style = MaterialTheme.typography.labelSmall)
-                MemoryInspector(lastMemoryStatus, lastMemoryIds, lastMemoryConfidence, lastMemoryContext)
+                val trajectoryLabel = if (lastTrajectoryUsed) " • trajetória=$lastWindowCount" else ""
+                Text("Memoria: $memoryLabel$idsLabel$trajectoryLabel • Inferência: ${if (modelReady) "llama.cpp local" else "aguardando modelo"}", style = MaterialTheme.typography.labelSmall)
+                MemoryInspector(lastMemoryStatus, lastMemoryIds, lastMemoryConfidence, lastMemoryContext, lastTrajectoryUsed, lastWindowCount)
                 Spacer(Modifier.height(8.dp))
                 Row(Modifier.fillMaxWidth()) {
                     OutlinedTextField(
@@ -337,6 +353,19 @@ fun OffiaChatScreen() {
                         modifier = Modifier.heightIn(min = 56.dp),
                         onClick = {
                             val text = input.trim()
+                            val sessionIdForResolve = activeSessionId
+                            val trajectoryWindow = messages
+                                .asSequence()
+                                .filter { it.text.isNotBlank() && it.text != "…" }
+                                .takeLastCompat(ACTIVE_TRAJECTORY_TURNS)
+                                .mapIndexed { index, message ->
+                                    MemoryWindowTurn(
+                                        role = if (message.role == "Você") "user" else "assistant",
+                                        text = message.text,
+                                        order = (index + 1).toLong(),
+                                    )
+                                }
+                                .toList()
                             input = ""
                             messages += ChatMessage("Você", text)
                             messages += ChatMessage("OFF.IA", "…")
@@ -346,11 +375,13 @@ fun OffiaChatScreen() {
                                 saveWorkspace()
                                 status = "Offline • consultando memória local…"
                                 try {
-                                    val resolution = memory.resolve(text)
+                                    val resolution = memory.resolve(text, sessionIdForResolve, trajectoryWindow)
                                     lastMemoryStatus = resolution.status
                                     lastMemoryIds = resolution.memoryIds
                                     lastMemoryConfidence = resolution.confidence
                                     lastMemoryContext = resolution.contextItems.joinToString("\n")
+                                    lastTrajectoryUsed = resolution.trajectoryUsed
+                                    lastWindowCount = resolution.conversationWindowCount
                                     val prompt = materializePrompt(text, resolution)
 
                                     status = "Offline • gerando localmente…"
@@ -395,4 +426,13 @@ fun OffiaChatScreen() {
             }
         }
     }
+}
+
+private fun <T> Sequence<T>.takeLastCompat(limit: Int): Sequence<T> {
+    val buffer = ArrayDeque<T>(limit)
+    for (item in this) {
+        if (buffer.size == limit) buffer.removeFirst()
+        buffer.addLast(item)
+    }
+    return buffer.asSequence()
 }
