@@ -100,15 +100,14 @@ Java_ia_off_NativeMemoryGateway_nativeClose(JNIEnv*, jobject, jlong handle) {
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_ia_off_NativeMemoryGateway_nativeResolve(JNIEnv* env, jobject, jlong handle, jstring message) {
+Java_ia_off_NativeMemoryGateway_nativeResolve(JNIEnv* env, jobject, jlong handle, jstring request_json) {
     auto* runtime = from_handle(handle);
     if (!runtime) {
         throw_illegal_state(env, "Memoria.ia runtime is closed");
         return nullptr;
     }
     try {
-        const std::string query = from_jstring(env, message);
-        const std::string request = "{\"query\":\"" + json_escape(query) + "\"}";
+        const std::string request = from_jstring(env, request_json);
         memoria_mobile_buffer in{
             reinterpret_cast<const uint8_t*>(request.data()), request.size()
         };
