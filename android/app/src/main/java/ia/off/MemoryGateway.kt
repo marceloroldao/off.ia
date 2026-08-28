@@ -7,11 +7,19 @@ enum class MemoryStatus {
     UNAVAILABLE,
 }
 
+data class MemoryWindowTurn(
+    val role: String,
+    val text: String,
+    val order: Long,
+)
+
 data class MemoryResolution(
     val status: MemoryStatus,
     val contextItems: List<String> = emptyList(),
     val memoryIds: List<String> = emptyList(),
     val confidence: Double? = null,
+    val trajectoryUsed: Boolean = false,
+    val conversationWindowCount: Int = 0,
 )
 
 data class MemoryLearnResult(
@@ -27,7 +35,11 @@ data class MemoryLearnResult(
 interface MemoryGateway {
     val available: Boolean
 
-    suspend fun resolve(message: String): MemoryResolution
+    suspend fun resolve(
+        message: String,
+        sessionId: String? = null,
+        conversationWindow: List<MemoryWindowTurn> = emptyList(),
+    ): MemoryResolution
 
     suspend fun learnTurn(userText: String, assistantText: String): MemoryLearnResult
 
@@ -37,8 +49,11 @@ interface MemoryGateway {
 object UnavailableMemoryGateway : MemoryGateway {
     override val available: Boolean = false
 
-    override suspend fun resolve(message: String) =
-        MemoryResolution(status = MemoryStatus.UNAVAILABLE)
+    override suspend fun resolve(
+        message: String,
+        sessionId: String?,
+        conversationWindow: List<MemoryWindowTurn>,
+    ) = MemoryResolution(status = MemoryStatus.UNAVAILABLE)
 
     override suspend fun learnTurn(userText: String, assistantText: String) =
         MemoryLearnResult()
