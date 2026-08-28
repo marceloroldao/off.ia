@@ -102,12 +102,15 @@ fun OffiaChatScreen() {
     val scope = rememberCoroutineScope()
     val prefs = remember { context.getSharedPreferences(PREFS, Context.MODE_PRIVATE) }
     val engine = remember { AiChat.getInferenceEngine(context.applicationContext) }
+    val memory: MemoryGateway = remember { UnavailableMemoryGateway }
 
     var input by remember { mutableStateOf("") }
     var status by remember { mutableStateOf("Offline • inicializando motor local") }
     var modelName by remember { mutableStateOf(prefs.getString(PREF_MODEL_NAME, null)) }
     var modelReady by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
+    var lastMemoryStatus by remember { mutableStateOf(MemoryStatus.UNAVAILABLE) }
+    var lastMemoryIds by remember { mutableStateOf<List<String>>(emptyList()) }
     val messages = remember { mutableStateListOf<ChatMessage>() }
 
     LaunchedEffect(Unit) {
@@ -189,8 +192,15 @@ fun OffiaChatScreen() {
                     .navigationBarsPadding()
                     .padding(horizontal = 12.dp, vertical = 10.dp)
             ) {
+                val memoryLabel = when (lastMemoryStatus) {
+                    MemoryStatus.HIT -> "HIT"
+                    MemoryStatus.MISS -> "MISS"
+                    MemoryStatus.UNRESOLVED -> "UNRESOLVED"
+                    MemoryStatus.UNAVAILABLE -> "indisponível"
+                }
+                val idsLabel = if (lastMemoryIds.isEmpty()) "" else " • ids=${lastMemoryIds.joinToString()}"
                 Text(
-                    "Memoria: integração pendente • Inferência: ${if (modelReady) "llama.cpp local" else "aguardando modelo"}",
+                    "Memoria: $memoryLabel$idsLabel • Inferência: ${if (modelReady) "llama.cpp local" else "aguardando modelo"}",
                     style = MaterialTheme.typography.labelSmall
                 )
                 Spacer(Modifier.height(8.dp))
@@ -216,23 +226,38 @@ fun OffiaChatScreen() {
 
                             scope.launch {
                                 busy = true
-                                status = "Offline • gerando localmente…"
+                                status = "Offline • consultando memória local…"
                                 try {
+                                    val resolution = memory.resolve(text)
+                                    lastMemoryStatus = resolution.status
+                                    lastMemoryIds = resolution.memoryIds
+                                    val prompt = materializePrompt(text, resolution)
+
+                                    status = "Offline • gerando localmente…"
                                     val answer = StringBuilder()
-                                    engine.sendUserPrompt(text, predictLength = 512).collect { token ->
+                                    engine.sendUserPrompt(prompt, predictLength = 512).collect { token ->
                                         answer.append(token)
                                         messages[responseIndex] = ChatMessage("OFF.IA", answer.toString())
                                     }
+
                                     if (answer.isEmpty()) {
                                         messages[responseIndex] = ChatMessage("OFF.IA", "O modelo não gerou resposta.")
+                                    } else if (memory.available) {
+                                        status = "Offline • aprendendo turno…"
+                                        val learned = memory.learnTurn(text, answer.toString())
+                                        memory.flush()
+                                        if (learned.memoryIds.isNotEmpty()) {
+                                            lastMemoryIds = (lastMemoryIds + learned.memoryIds).distinct()
+                                        }
                                     }
+
                                     status = "Offline • ${modelName ?: "GGUF"} pronto"
                                 } catch (e: Exception) {
                                     messages[responseIndex] = ChatMessage(
                                         "OFF.IA",
-                                        "Erro de inferência local: ${e.message ?: e.javaClass.simpleName}"
+                                        "Erro local: ${e.message ?: e.javaClass.simpleName}"
                                     )
-                                    status = "Erro de inferência local"
+                                    status = "Erro no ciclo local"
                                 } finally {
                                     busy = false
                                 }
