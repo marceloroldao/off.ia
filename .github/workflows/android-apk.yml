@@ -23,7 +23,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout OFF.IA
         uses: actions/checkout@v6
 
       - name: Fetch pinned llama.cpp
@@ -33,6 +33,20 @@ jobs:
           git clone --filter=blob:none --no-checkout https://github.com/ggml-org/llama.cpp android/vendor/llama.cpp
           git -C android/vendor/llama.cpp fetch --depth 1 origin ca3d5a3e10d53f7ea672cb9b6178faca3e2807bc
           git -C android/vendor/llama.cpp checkout --detach ca3d5a3e10d53f7ea672cb9b6178faca3e2807bc
+
+      - name: Checkout pinned Memoria.ia mobile runtime
+        uses: actions/checkout@v6
+        with:
+          repository: marceloroldao/memoria.ia
+          ref: a45b18457eaaadfc2c4352d59d0c2080d623d7ff
+          path: android/vendor/memoria.ia
+
+      - name: Checkout pinned Resolutive-DB Android ABI
+        uses: actions/checkout@v6
+        with:
+          repository: marceloroldao/resolutive-DB
+          ref: d6aa823eaf348ed6230e6ee4e15db1f35e5da857
+          path: android/vendor/resolutive-DB
 
       - name: Set up JDK 17
         uses: actions/setup-java@v5
@@ -51,13 +65,13 @@ jobs:
         with:
           gradle-version: '8.14.3'
 
-      - name: Build debug APK with llama.cpp
+      - name: Build full offline debug APK
         run: gradle -p android :app:assembleDebug --no-daemon --stacktrace
 
-      - name: Upload OFF.IA APK
+      - name: Upload OFF.IA full offline APK
         uses: actions/upload-artifact@v6
         with:
-          name: offia-android-llamacpp-debug
+          name: offia-android-full-offline-debug
           path: android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 14
