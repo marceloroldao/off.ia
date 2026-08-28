@@ -12,8 +12,8 @@ android {
         applicationId = "ia.off"
         minSdk = 33
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0-alpha.1"
+        versionCode = 2
+        versionName = "0.1.0-alpha.2"
     }
 
     buildFeatures { compose = true }
@@ -32,6 +32,9 @@ dependencies {
     val bom = platform("androidx.compose:compose-bom:2024.12.01")
     implementation(bom)
     androidTestImplementation(bom)
+
+    implementation(project(":llama-lib"))
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     implementation("androidx.activity:activity-compose:1.12.2")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.ui:ui")
