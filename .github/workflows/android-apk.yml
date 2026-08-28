@@ -61,6 +61,12 @@ jobs:
       - name: Install Android native toolchain
         run: sdkmanager "platforms;android-36" "build-tools;36.0.0" "ndk;29.0.13113456" "cmake;3.31.6"
 
+      - name: Restore stable alpha signing key
+        shell: bash
+        run: |
+          base64 --decode android/signing/offia-alpha.jks.b64 > android/offia-alpha.jks
+          keytool -list -keystore android/offia-alpha.jks -storepass offia-alpha -alias offia-alpha >/dev/null
+
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
         with:
@@ -68,6 +74,11 @@ jobs:
 
       - name: Build full offline debug APK
         run: gradle -p android :app:assembleDebug --no-daemon --stacktrace
+
+      - name: Verify APK signature
+        shell: bash
+        run: |
+          "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs android/app/build/outputs/apk/debug/app-debug.apk
 
       - name: Upload OFF.IA full offline APK
         uses: actions/upload-artifact@v6
