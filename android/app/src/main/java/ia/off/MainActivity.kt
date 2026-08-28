@@ -153,12 +153,14 @@ private suspend fun loadLocalModel(engine: InferenceEngine, file: File): GgufPro
 @Composable
 fun OffiaChatScreen() {
     val context = LocalContext.current
+    val appContext = context.applicationContext
     val scope = rememberCoroutineScope()
-    val prefs = remember { context.getSharedPreferences(PREFS, Context.MODE_PRIVATE) }
-    val engine = remember { AiChat.getInferenceEngine(context.applicationContext) }
+    val prefs = remember { appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE) }
+    val chatStore = remember { ChatStore(appContext) }
+    val engine = remember { AiChat.getInferenceEngine(appContext) }
     val memory: MemoryGateway = remember {
         try {
-            NativeMemoryGateway(context.applicationContext)
+            NativeMemoryGateway(appContext)
         } catch (_: Throwable) {
             UnavailableMemoryGateway
         }
@@ -180,7 +182,11 @@ fun OffiaChatScreen() {
         mutableStateOf(if (memory.available) MemoryStatus.MISS else MemoryStatus.UNAVAILABLE)
     }
     var lastMemoryIds by remember { mutableStateOf<List<String>>(emptyList()) }
-    val messages = remember { mutableStateListOf<ChatMessage>() }
+    val messages = remember {
+        mutableStateListOf<ChatMessage>().apply {
+            addAll(chatStore.load())
+        }
+    }
 
     LaunchedEffect(Unit) {
         val savedPath = prefs.getString(PREF_MODEL_PATH, null)
@@ -301,6 +307,7 @@ fun OffiaChatScreen() {
 
                             scope.launch {
                                 busy = true
+                                withContext(Dispatchers.IO) { chatStore.save(messages.toList()) }
                                 status = "Offline • consultando memória local…"
                                 try {
                                     val resolution = memory.resolve(text)
@@ -326,12 +333,14 @@ fun OffiaChatScreen() {
                                         }
                                     }
 
+                                    withContext(Dispatchers.IO) { chatStore.save(messages.toList()) }
                                     status = "Offline • ${modelName ?: "GGUF"} pronto"
                                 } catch (e: Exception) {
                                     messages[responseIndex] = ChatMessage(
                                         "OFF.IA",
                                         "Erro local: ${e.message ?: e.javaClass.simpleName}"
                                     )
+                                    withContext(Dispatchers.IO) { chatStore.save(messages.toList()) }
                                     status = "Erro no ciclo local"
                                 } finally {
                                     busy = false
