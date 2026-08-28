@@ -102,14 +102,28 @@ fun OffiaChatScreen() {
     val scope = rememberCoroutineScope()
     val prefs = remember { context.getSharedPreferences(PREFS, Context.MODE_PRIVATE) }
     val engine = remember { AiChat.getInferenceEngine(context.applicationContext) }
-    val memory: MemoryGateway = remember { UnavailableMemoryGateway }
+    val memory: MemoryGateway = remember {
+        try {
+            NativeMemoryGateway(context.applicationContext)
+        } catch (_: Throwable) {
+            UnavailableMemoryGateway
+        }
+    }
+
+    DisposableEffect(memory) {
+        onDispose {
+            if (memory is NativeMemoryGateway) memory.close()
+        }
+    }
 
     var input by remember { mutableStateOf("") }
     var status by remember { mutableStateOf("Offline • inicializando motor local") }
     var modelName by remember { mutableStateOf(prefs.getString(PREF_MODEL_NAME, null)) }
     var modelReady by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
-    var lastMemoryStatus by remember { mutableStateOf(MemoryStatus.UNAVAILABLE) }
+    var lastMemoryStatus by remember {
+        mutableStateOf(if (memory.available) MemoryStatus.MISS else MemoryStatus.UNAVAILABLE)
+    }
     var lastMemoryIds by remember { mutableStateOf<List<String>>(emptyList()) }
     val messages = remember { mutableStateListOf<ChatMessage>() }
 
