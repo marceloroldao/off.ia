@@ -19,6 +19,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.arm.aichat.AiChat
 import com.arm.aichat.InferenceEngine
+import com.arm.aichat.UnsupportedArchitectureException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
@@ -26,8 +27,13 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.FileOutputStream
+import java.io.IOException
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 
 data class ChatMessage(val role: String, val text: String)
+
+data class GgufProbe(val sizeBytes: Long, val version: Int)
 
 private const val PREFS = "offia-local"
 private const val PREF_MODEL_PATH = "model-path"
@@ -50,13 +56,49 @@ private fun displayNameForUri(context: Context, uri: Uri): String? =
         if (index < 0) null else cursor.getString(index)
     }
 
-private suspend fun importModel(context: Context, uri: Uri, displayName: String): File =
+private fun probeGguf(file: File): GgufProbe {
+    require(file.isFile && file.canRead()) { "Arquivo do modelo não pode ser lido" }
+    require(file.length() >= 16L) { "Arquivo muito pequeno para ser um GGUF válido" }
+
+    val header = ByteArray(8)
+    file.inputStream().use { input ->
+        val read = input.read(header)
+        require(read == header.size) { "Cabeçalho GGUF incompleto" }
+    }
+
+    val magic = header.copyOfRange(0, 4).toString(Charsets.US_ASCII)
+    require(magic == "GGUF") {
+        "Arquivo inválido: cabeçalho '$magic' em vez de GGUF. Baixe o arquivo .gguf novamente."
+    }
+
+    val version = ByteBuffer.wrap(header, 4, 4)
+        .order(ByteOrder.LITTLE_ENDIAN)
+        .int
+    require(version in 2..3) {
+        "Versão GGUF $version não reconhecida por este diagnóstico"
+    }
+
+    return GgufProbe(file.length(), version)
+}
+
+private fun modelLoadMessage(error: Exception, probe: GgufProbe?): String = when (error) {
+    is UnsupportedArchitectureException -> {
+        val details = probe?.let { "GGUF v${it.version}, ${it.sizeBytes / (1024 * 1024)} MB" } ?: "GGUF não diagnosticado"
+        "O arquivo tem cabeçalho GGUF válido ($details), mas o llama.cpp não conseguiu abrir o modelo. " +
+            "Isso não significa necessariamente arquitetura incompatível. Tente baixar o GGUF novamente; " +
+            "se repetir, envie esta mensagem para verificarmos o loader."
+    }
+    else -> error.message ?: error.javaClass.simpleName
+}
+
+private suspend fun importModel(context: Context, uri: Uri, displayName: String): Pair<File, GgufProbe> =
     withContext(Dispatchers.IO) {
         val models = File(context.filesDir, "models").apply { mkdirs() }
         val safeName = displayName.replace(Regex("[^A-Za-z0-9._-]"), "_")
         val target = File(models, safeName)
         val temp = File(models, "$safeName.part")
 
+        if (temp.exists()) temp.delete()
         context.contentResolver.openInputStream(uri).use { input ->
             requireNotNull(input) { "Não foi possível abrir o modelo selecionado" }
             FileOutputStream(temp).use { output ->
@@ -65,10 +107,16 @@ private suspend fun importModel(context: Context, uri: Uri, displayName: String)
             }
         }
 
-        require(temp.length() > 0L) { "Modelo GGUF vazio" }
+        val probe = try {
+            probeGguf(temp)
+        } catch (e: Exception) {
+            temp.delete()
+            throw e
+        }
+
         if (target.exists()) target.delete()
         check(temp.renameTo(target)) { "Falha ao concluir a importação do GGUF" }
-        target
+        target to probe
     }
 
 private suspend fun waitUntilInitialized(engine: InferenceEngine) {
@@ -85,15 +133,21 @@ private suspend fun waitUntilInitialized(engine: InferenceEngine) {
     if (state is InferenceEngine.State.Error) throw state.exception
 }
 
-private suspend fun loadLocalModel(engine: InferenceEngine, file: File) {
+private suspend fun loadLocalModel(engine: InferenceEngine, file: File): GgufProbe {
+    val probe = withContext(Dispatchers.IO) { probeGguf(file) }
     waitUntilInitialized(engine)
     when (engine.state.value) {
         is InferenceEngine.State.ModelReady,
         is InferenceEngine.State.Error -> withContext(Dispatchers.IO) { engine.cleanUp() }
         else -> Unit
     }
-    engine.loadModel(file.absolutePath)
-    engine.setSystemPrompt(SYSTEM_PROMPT)
+    try {
+        engine.loadModel(file.absolutePath)
+        engine.setSystemPrompt(SYSTEM_PROMPT)
+    } catch (e: Exception) {
+        throw IOException(modelLoadMessage(e, probe), e)
+    }
+    return probe
 }
 
 @Composable
@@ -121,6 +175,7 @@ fun OffiaChatScreen() {
     var modelName by remember { mutableStateOf(prefs.getString(PREF_MODEL_NAME, null)) }
     var modelReady by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
+    var modelProbe by remember { mutableStateOf<GgufProbe?>(null) }
     var lastMemoryStatus by remember {
         mutableStateOf(if (memory.available) MemoryStatus.MISS else MemoryStatus.UNAVAILABLE)
     }
@@ -132,13 +187,15 @@ fun OffiaChatScreen() {
         val savedFile = savedPath?.let(::File)
         if (savedFile != null && savedFile.isFile) {
             busy = true
-            status = "Offline • carregando ${modelName ?: "GGUF"}…"
+            status = "Offline • verificando ${modelName ?: "GGUF"}…"
             try {
-                loadLocalModel(engine, savedFile)
+                modelProbe = loadLocalModel(engine, savedFile)
                 modelReady = true
                 status = "Offline • ${modelName ?: "GGUF"} pronto"
             } catch (e: Exception) {
-                status = "Erro ao carregar modelo • ${e.message ?: e.javaClass.simpleName}"
+                prefs.edit().remove(PREF_MODEL_PATH).remove(PREF_MODEL_NAME).apply()
+                modelName = null
+                status = "Erro no modelo • ${e.message ?: e.javaClass.simpleName}"
             } finally {
                 busy = false
             }
@@ -163,10 +220,11 @@ fun OffiaChatScreen() {
         scope.launch {
             busy = true
             modelReady = false
-            status = "Importando $name para o OFF.IA…"
+            status = "Importando e validando $name…"
             try {
-                val localFile = importModel(context, uri, name)
-                status = "Carregando $name no llama.cpp…"
+                val (localFile, importedProbe) = importModel(context, uri, name)
+                modelProbe = importedProbe
+                status = "GGUF v${importedProbe.version} válido • carregando no llama.cpp…"
                 loadLocalModel(engine, localFile)
                 modelName = name
                 prefs.edit()
@@ -189,6 +247,9 @@ fun OffiaChatScreen() {
             Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
                 Text("OFF.IA", style = MaterialTheme.typography.headlineMedium)
                 Text(status, style = MaterialTheme.typography.bodySmall)
+                modelProbe?.let {
+                    Text("GGUF v${it.version} • ${it.sizeBytes / (1024 * 1024)} MB", style = MaterialTheme.typography.labelSmall)
+                }
                 Spacer(Modifier.height(8.dp))
                 OutlinedButton(
                     enabled = !busy,
