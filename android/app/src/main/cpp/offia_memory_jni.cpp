@@ -1,19 +1,20 @@
 #include <jni.h>
 
-#include "memoria/mobile.h"
+#include "memoria_mobile.h"
 
 #include <cstdint>
 #include <stdexcept>
 #include <string>
-#include <vector>
 
 namespace {
-memoria_mobile_runtime* from_handle(jlong handle) {
-    return reinterpret_cast<memoria_mobile_runtime*>(static_cast<intptr_t>(handle));
+constexpr const char* OFFIA_ORGANIZATION_ID = "offia-local";
+
+memoria_mobile_handle* from_handle(jlong handle) {
+    return reinterpret_cast<memoria_mobile_handle*>(static_cast<intptr_t>(handle));
 }
 
-jlong to_handle(memoria_mobile_runtime* runtime) {
-    return static_cast<jlong>(reinterpret_cast<intptr_t>(runtime));
+jlong to_handle(memoria_mobile_handle* handle) {
+    return static_cast<jlong>(reinterpret_cast<intptr_t>(handle));
 }
 
 std::string from_jstring(JNIEnv* env, jstring value) {
@@ -30,13 +31,49 @@ void throw_illegal_state(JNIEnv* env, const std::string& message) {
     if (cls) env->ThrowNew(cls, message.c_str());
 }
 
-std::string status_name(memoria_mobile_resolution_status status) {
-    switch (status) {
-        case MEMORIA_MOBILE_MISS: return "MISS";
-        case MEMORIA_MOBILE_HIT: return "HIT";
-        case MEMORIA_MOBILE_UNRESOLVED: return "UNRESOLVED";
+std::string json_escape(const std::string& value) {
+    std::string out;
+    out.reserve(value.size() + 16);
+    for (unsigned char ch : value) {
+        switch (ch) {
+            case '\\': out += "\\\\"; break;
+            case '"': out += "\\\""; break;
+            case '\n': out += "\\n"; break;
+            case '\r': out += "\\r"; break;
+            case '\t': out += "\\t"; break;
+            default: out.push_back(static_cast<char>(ch)); break;
+        }
     }
-    return "UNRESOLVED";
+    return out;
+}
+
+std::string take_response(memoria_mobile_buffer out) {
+    std::string result;
+    if (out.data && out.size) {
+        result.assign(reinterpret_cast<const char*>(out.data), out.size);
+    }
+    memoria_mobile_free_buffer(out);
+    return result;
+}
+
+std::string first_stored_memory_id(const std::string& json) {
+    const std::string marker = "\"stored_memory_ids\":[\"";
+    const auto start = json.find(marker);
+    if (start == std::string::npos) return {};
+    const auto value_start = start + marker.size();
+    const auto end = json.find('"', value_start);
+    if (end == std::string::npos) return {};
+    return json.substr(value_start, end - value_start);
+}
+
+memoria_mobile_status call_learn(memoria_mobile_handle* handle, const std::string& request, std::string* response) {
+    memoria_mobile_buffer in{
+        reinterpret_cast<const uint8_t*>(request.data()), request.size()
+    };
+    memoria_mobile_buffer out{nullptr, 0};
+    const auto status = memoria_mobile_learn_turn_json(handle, in, &out);
+    *response = take_response(out);
+    return status;
 }
 }
 
@@ -44,13 +81,13 @@ extern "C" JNIEXPORT jlong JNICALL
 Java_ia_off_NativeMemoryGateway_nativeOpen(JNIEnv* env, jobject, jstring path) {
     try {
         const std::string storage = from_jstring(env, path);
-        memoria_mobile_runtime* runtime = nullptr;
-        const auto status = memoria_mobile_open(storage.c_str(), &runtime);
-        if (status != MEMORIA_MOBILE_OK || !runtime) {
-            throw_illegal_state(env, memoria_mobile_last_error());
+        memoria_mobile_handle* handle = nullptr;
+        const auto status = memoria_mobile_open(storage.c_str(), OFFIA_ORGANIZATION_ID, &handle);
+        if (status != MEMORIA_MOBILE_OK || !handle) {
+            throw_illegal_state(env, "Falha ao abrir Memoria.ia/BDR");
             return 0;
         }
-        return to_handle(runtime);
+        return to_handle(handle);
     } catch (const std::exception& e) {
         throw_illegal_state(env, e.what());
         return 0;
@@ -71,63 +108,69 @@ Java_ia_off_NativeMemoryGateway_nativeResolve(JNIEnv* env, jobject, jlong handle
     }
     try {
         const std::string query = from_jstring(env, message);
-        memoria_mobile_resolution result{};
-        size_t needed = 0;
-        auto status = memoria_mobile_resolve(
-            runtime, query.data(), query.size(), &result, nullptr, 0, &needed);
-
-        std::string context;
-        if (status == MEMORIA_MOBILE_BUFFER_TOO_SMALL && result.status == MEMORIA_MOBILE_HIT) {
-            std::vector<char> buffer(needed);
-            size_t actual = 0;
-            status = memoria_mobile_resolve(
-                runtime,
-                query.data(), query.size(),
-                &result,
-                buffer.empty() ? nullptr : buffer.data(), buffer.size(),
-                &actual);
-            if (status == MEMORIA_MOBILE_OK) context.assign(buffer.data(), actual);
-        }
-        if (status != MEMORIA_MOBILE_OK) {
-            throw_illegal_state(env, memoria_mobile_last_error());
+        const std::string request = "{\"query\":\"" + json_escape(query) + "\"}";
+        memoria_mobile_buffer in{
+            reinterpret_cast<const uint8_t*>(request.data()), request.size()
+        };
+        memoria_mobile_buffer out{nullptr, 0};
+        const auto status = memoria_mobile_resolve_context_json(runtime, in, &out);
+        const std::string response = take_response(out);
+        if (status != MEMORIA_MOBILE_OK && status != MEMORIA_MOBILE_UNRESOLVED) {
+            throw_illegal_state(env, "Falha ao consultar Memoria.ia");
             return nullptr;
         }
-
-        // Four fields; context may contain arbitrary newlines because Kotlin splits with limit=4.
-        std::string packed = status_name(result.status) + "\n" +
-            std::to_string(result.memory_id) + "\n" +
-            std::to_string(result.score) + "\n" + context;
-        return env->NewStringUTF(packed.c_str());
+        return env->NewStringUTF(response.c_str());
     } catch (const std::exception& e) {
         throw_illegal_state(env, e.what());
         return nullptr;
     }
 }
 
-extern "C" JNIEXPORT jlong JNICALL
+extern "C" JNIEXPORT jstring JNICALL
 Java_ia_off_NativeMemoryGateway_nativeLearn(JNIEnv* env, jobject, jlong handle, jstring user, jstring assistant) {
     auto* runtime = from_handle(handle);
     if (!runtime) {
         throw_illegal_state(env, "Memoria.ia runtime is closed");
-        return 0;
+        return nullptr;
     }
     try {
         const std::string user_text = from_jstring(env, user);
         const std::string assistant_text = from_jstring(env, assistant);
-        uint64_t memory_id = 0;
-        const auto status = memoria_mobile_learn_turn(
-            runtime,
-            user_text.data(), user_text.size(),
-            assistant_text.data(), assistant_text.size(),
-            &memory_id);
-        if (status != MEMORIA_MOBILE_OK) {
-            throw_illegal_state(env, memoria_mobile_last_error());
-            return 0;
+
+        std::string user_response;
+        const std::string user_request =
+            "{\"role\":\"user\",\"text\":\"" + json_escape(user_text) + "\"}";
+        if (call_learn(runtime, user_request, &user_response) != MEMORIA_MOBILE_OK) {
+            throw_illegal_state(env, "Falha ao persistir turno do usuario na Memoria.ia");
+            return nullptr;
         }
-        return static_cast<jlong>(memory_id);
+        const std::string user_id = first_stored_memory_id(user_response);
+        if (user_id.empty()) {
+            throw_illegal_state(env, "Memoria.ia nao retornou memory_id do usuario");
+            return nullptr;
+        }
+
+        std::string assistant_response;
+        const std::string assistant_request =
+            "{\"role\":\"assistant\",\"text\":\"" + json_escape(assistant_text) +
+            "\",\"ultimate_source_memory_id\":\"" + json_escape(user_id) + "\"}";
+        if (call_learn(runtime, assistant_request, &assistant_response) != MEMORIA_MOBILE_OK) {
+            throw_illegal_state(env, "Falha ao persistir turno do assistente na Memoria.ia");
+            return nullptr;
+        }
+        const std::string assistant_id = first_stored_memory_id(assistant_response);
+        if (assistant_id.empty()) {
+            throw_illegal_state(env, "Memoria.ia nao retornou memory_id do assistente");
+            return nullptr;
+        }
+
+        const std::string packed =
+            "{\"memory_ids\":[\"" + json_escape(user_id) + "\",\"" +
+            json_escape(assistant_id) + "\"]}";
+        return env->NewStringUTF(packed.c_str());
     } catch (const std::exception& e) {
         throw_illegal_state(env, e.what());
-        return 0;
+        return nullptr;
     }
 }
 
@@ -139,6 +182,6 @@ Java_ia_off_NativeMemoryGateway_nativeFlush(JNIEnv* env, jobject, jlong handle) 
         return;
     }
     if (memoria_mobile_flush(runtime) != MEMORIA_MOBILE_OK) {
-        throw_illegal_state(env, memoria_mobile_last_error());
+        throw_illegal_state(env, "Falha ao sincronizar Memoria.ia/BDR");
     }
 }
