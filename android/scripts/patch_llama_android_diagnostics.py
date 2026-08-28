@@ -30,11 +30,8 @@ if marker not in cpp_text:
     raise SystemExit("ai_chat.cpp anchor 3 not found")
 cpp_text = cpp_text.replace(marker, addition, 1)
 
-# The llama.android example only formats chat messages when the GGUF declares an
-# explicit chat template. Some third-party SmolLM2 GGUF conversions omit that
-# metadata. common_chat_templates_init() still supplies llama.cpp's ChatML
-# fallback, which matches SmolLM2's <|im_start|>/<|im_end|> format. Use it for
-# both system and user turns instead of feeding raw text to an instruct model.
+# Some third-party GGUFs omit tokenizer.chat_template. llama.cpp still creates a
+# ChatML fallback template; SmolLM2 uses the same <|im_start|>/<|im_end|> family.
 chat_template_probe = 'const bool has_chat_template = common_chat_templates_was_explicit(g_chat_templates.get());'
 count = cpp_text.count(chat_template_probe)
 if count < 2:
@@ -43,6 +40,14 @@ cpp_text = cpp_text.replace(
     chat_template_probe,
     'const bool has_chat_template = true; // OFF.IA: use llama.cpp ChatML fallback when GGUF metadata omits a template',
 )
+
+# Tiny models such as SmolLM2-135M can fall into short repetition loops. Keep the
+# upstream sampler chain but enable conservative repetition/DRY penalties.
+sampler_needle = '''static common_sampler *new_sampler(float temp) {\n    common_params_sampling sparams;\n    sparams.temp = temp;\n    return common_sampler_init(g_model, sparams);\n}\n'''
+sampler_replacement = '''static common_sampler *new_sampler(float temp) {\n    common_params_sampling sparams;\n    sparams.temp = temp;\n    sparams.top_k = 40;\n    sparams.top_p = 0.90f;\n    sparams.min_p = 0.05f;\n    sparams.penalty_last_n = 64;\n    sparams.penalty_repeat = 1.12f;\n    sparams.dry_multiplier = 0.6f;\n    sparams.dry_allowed_length = 3;\n    sparams.dry_penalty_last_n = 128;\n    return common_sampler_init(g_model, sparams);\n}\n'''
+if sampler_needle not in cpp_text:
+    raise SystemExit("ai_chat.cpp sampler anchor not found")
+cpp_text = cpp_text.replace(sampler_needle, sampler_replacement, 1)
 
 cpp.write_text(cpp_text, encoding="utf-8")
 
@@ -60,4 +65,4 @@ if needle not in kt_text:
 kt_text = kt_text.replace(needle, replacement, 1)
 kt.write_text(kt_text, encoding="utf-8")
 
-print(f"OFFIA_LLAMA_CHAT_V3: diagnostics + ChatML fallback patched ({count} chat sites)")
+print(f"OFFIA_LLAMA_CHAT_V4: diagnostics + ChatML fallback + anti-repeat patched ({count} chat sites)")
