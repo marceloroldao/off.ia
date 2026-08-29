@@ -47,9 +47,8 @@ fun MessageCard(
                 tonalElevation = if (isUser) 1.dp else 0.dp,
                 shape = MaterialTheme.shapes.large,
             ) {
-                Text(
+                RichMessageContent(
                     text = message.text,
-                    style = MaterialTheme.typography.bodyLarge,
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
                 )
             }
@@ -88,25 +87,28 @@ private fun ResponseMemoryPanel(memory: ResponseMemoryMetadata?) {
             Text("Memoria.ia nesta resposta", style = MaterialTheme.typography.titleSmall)
             if (memory == null) {
                 Text("Esta resposta não possui metadados de memória registrados.", style = MaterialTheme.typography.bodySmall)
-                return@Column
-            }
-
-            Text("Status: ${memory.status}", style = MaterialTheme.typography.bodySmall)
-            Text(
-                "IDs: ${if (memory.memoryIds.isEmpty()) "—" else memory.memoryIds.joinToString()}",
-                style = MaterialTheme.typography.bodySmall,
-            )
-            memory.confidence?.let {
-                Text("Confiança: ${"%.3f".format(it)}", style = MaterialTheme.typography.bodySmall)
-            }
-            Text(
-                "Trajetória: ${if (memory.trajectoryUsed) "usada" else "não usada"} • janela=${memory.conversationWindowCount}",
-                style = MaterialTheme.typography.bodySmall,
-            )
-            Text("Contexto selecionado: ${memory.selectedContext.length} caracteres", style = MaterialTheme.typography.bodySmall)
-            if (memory.selectedContext.isNotBlank()) {
-                HorizontalDivider()
-                Text(memory.selectedContext, style = MaterialTheme.typography.bodyMedium)
+            } else {
+                Text("Status: ${memory.status}", style = MaterialTheme.typography.bodySmall)
+                Text(
+                    "IDs usados: ${if (memory.memoryIds.isEmpty()) "—" else memory.memoryIds.joinToString()}",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Text(
+                    "IDs aprendidos: ${if (memory.learnedMemoryIds.isEmpty()) "—" else memory.learnedMemoryIds.joinToString()}",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                memory.confidence?.let {
+                    Text("Confiança: ${"%.3f".format(it)}", style = MaterialTheme.typography.bodySmall)
+                }
+                Text(
+                    "Trajetória: ${if (memory.trajectoryUsed) "usada" else "não usada"} • janela=${memory.conversationWindowCount}",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Text("Contexto selecionado: ${memory.selectedContext.length} caracteres", style = MaterialTheme.typography.bodySmall)
+                if (memory.selectedContext.isNotBlank()) {
+                    HorizontalDivider()
+                    Text(memory.selectedContext, style = MaterialTheme.typography.bodyMedium)
+                }
             }
         }
     }
