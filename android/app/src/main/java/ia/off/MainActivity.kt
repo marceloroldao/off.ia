@@ -164,6 +164,7 @@ fun OffiaChatScreen() {
     val settingsStore = remember { AppSettingsStore(appContext) }
     val modelManager = remember { ModelManager(appContext) }
     val modelDownloader = remember { HttpModelDownloadProvider(appContext) }
+    val curiosityProvider: CuriosityProvider = remember { WikipediaCuriosityProvider() }
     val chatStore = remember { ChatStore(appContext) }
     val initialWorkspace = remember { chatStore.load() }
     val sessions = remember { mutableStateListOf<ChatSession>().apply { addAll(initialWorkspace.sessions) } }
@@ -409,6 +410,7 @@ fun OffiaChatScreen() {
         val userIndex = (responseIndex - 1 downTo 0).firstOrNull { messages[it].role == "Você" } ?: return
         val userText = messages[userIndex].text
         val previous = messages[responseIndex]
+        if (previous.generation?.source == ResponseSource.CURIOSITY) return
         val auditedMemory = previous.memory?.copy(learnedMemoryIds = emptyList())
         auditedMemory?.let {
             lastMemoryStatus = it.status
@@ -450,6 +452,92 @@ fun OffiaChatScreen() {
                 messages[responseIndex] = previous
                 saveWorkspace()
                 status = "Erro ao regenerar • ${e.message ?: e.javaClass.simpleName}"
+            } finally {
+                generating = false
+                generationJob = null
+                busy = false
+            }
+        }
+    }
+
+    fun runCuriosity(responseId: String) {
+        if (busy || !modelReady || !curiosityProvider.available) return
+        val responseIndex = messages.indexOfFirst { it.id == responseId }
+        if (responseIndex < 0) return
+        val localResponse = messages[responseIndex]
+        if (localResponse.generation?.source == ResponseSource.CURIOSITY) return
+        val userIndex = (responseIndex - 1 downTo 0).firstOrNull { messages[it].role == "Você" } ?: return
+        val userQuestion = messages[userIndex].text
+        val settings = settingsStore.load()
+
+        if (settings.blockNetworkAfterModelDownload) {
+            status = "Curiosidade bloqueada pela preferência de rede"
+            return
+        }
+        val network = currentNetworkState(appContext)
+        if (!network.connected || !network.validated) {
+            status = "Curiosidade indisponível • sem Internet validada"
+            return
+        }
+
+        val curiosityMessage = ChatMessage(
+            role = "OFF.IA",
+            text = "…",
+            generation = GenerationMetadata(
+                source = ResponseSource.CURIOSITY,
+                modelName = modelName,
+            ),
+        )
+        messages += curiosityMessage
+        val curiosityIndex = messages.lastIndex
+        saveWorkspace()
+
+        generationJob = scope.launch {
+            busy = true
+            status = "Online • buscando fontes públicas…"
+            val answer = StringBuilder()
+            try {
+                val result = curiosityProvider.acquire(
+                    CuriosityRequest(
+                        userQuestion = userQuestion,
+                        localAnswer = localResponse.text,
+                        maxSources = 3,
+                    ),
+                )
+                messages[curiosityIndex] = messages[curiosityIndex].copy(
+                    generation = messages[curiosityIndex].generation?.copy(publicSources = result.sources),
+                )
+
+                status = "Offline • sintetizando Curiosidade localmente…"
+                generating = true
+                val generationStartedAt = System.currentTimeMillis()
+                val prompt = materializeCuriosityPrompt(userQuestion, localResponse.text, result)
+                engine.sendUserPrompt(prompt, predictLength = 512).collect { token ->
+                    answer.append(token)
+                    messages[curiosityIndex] = messages[curiosityIndex].copy(text = answer.toString())
+                }
+                val generationLatency = System.currentTimeMillis() - generationStartedAt
+                messages[curiosityIndex] = messages[curiosityIndex].copy(
+                    text = answer.toString().ifBlank { "As fontes foram encontradas, mas o modelo não gerou uma síntese." },
+                    generation = messages[curiosityIndex].generation?.copy(
+                        latencyMs = generationLatency,
+                        publicSources = result.sources,
+                    ),
+                )
+                saveWorkspace()
+                status = "Offline • Curiosidade concluída • ${result.sources.size} fonte(s)"
+            } catch (_: CancellationException) {
+                if (answer.isEmpty()) {
+                    messages[curiosityIndex] = messages[curiosityIndex].copy(text = "Curiosidade interrompida.")
+                }
+                saveWorkspace()
+                status = "Offline • Curiosidade interrompida"
+            } catch (e: Exception) {
+                messages[curiosityIndex] = messages[curiosityIndex].copy(
+                    text = "Curiosidade indisponível: ${e.message ?: e.javaClass.simpleName}",
+                )
+                saveWorkspace()
+                status = "Erro na Curiosidade"
             } finally {
                 generating = false
                 generationJob = null
@@ -679,6 +767,7 @@ fun OffiaChatScreen() {
                     message = message,
                     busy = busy,
                     onRegenerate = if (modelReady) ({ responseId -> regenerateResponse(responseId) }) else null,
+                    onCuriosity = if (modelReady && curiosityProvider.available) ({ responseId -> runCuriosity(responseId) }) else null,
                 )
             }
         }
