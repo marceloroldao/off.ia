@@ -26,6 +26,7 @@ data class GenerationMetadata(
     val source: ResponseSource = ResponseSource.LOCAL,
     val modelName: String? = null,
     val latencyMs: Long? = null,
+    val publicSources: List<CuriositySource> = emptyList(),
 )
 
 data class ChatMessage(
