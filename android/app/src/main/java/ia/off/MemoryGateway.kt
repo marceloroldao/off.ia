@@ -43,6 +43,13 @@ interface MemoryGateway {
 
     suspend fun learnTurn(userText: String, assistantText: String): MemoryLearnResult
 
+    /** Returns one read-only page from Memoria.ia's versioned diagnostic export. */
+    suspend fun exportSnapshotPage(
+        turnOffset: Int,
+        episodeOffset: Int,
+        limit: Int = 64,
+    ): String?
+
     suspend fun flush()
 }
 
@@ -57,6 +64,8 @@ object UnavailableMemoryGateway : MemoryGateway {
 
     override suspend fun learnTurn(userText: String, assistantText: String) =
         MemoryLearnResult()
+
+    override suspend fun exportSnapshotPage(turnOffset: Int, episodeOffset: Int, limit: Int): String? = null
 
     override suspend fun flush() = Unit
 }
