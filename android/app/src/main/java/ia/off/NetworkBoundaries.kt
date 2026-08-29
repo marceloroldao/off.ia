@@ -25,8 +25,9 @@ sealed interface ModelDownloadState {
 }
 
 /**
- * Network implementation belongs behind this boundary. The current offline build
- * intentionally provides no implementation and keeps INTERNET permission absent.
+ * Model acquisition is an explicit OFF.IA network capability. Download providers
+ * may use INTERNET, but llama.cpp inference, Memoria.ia and BDR do not depend on
+ * this boundary and remain local.
  */
 interface ModelDownloadProvider {
     suspend fun download(
