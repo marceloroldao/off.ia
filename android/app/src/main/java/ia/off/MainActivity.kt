@@ -20,7 +20,9 @@ import androidx.compose.ui.unit.dp
 import com.arm.aichat.AiChat
 import com.arm.aichat.InferenceEngine
 import com.arm.aichat.UnsupportedArchitectureException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -169,10 +171,6 @@ fun OffiaChatScreen() {
         chatStore.save(ChatWorkspace(sessions.toMutableList(), activeSessionId))
     }
 
-    fun resetTransientMemoryStatus(memoryAvailable: Boolean) {
-        // Actual state vars are updated below through the local helper lambdas.
-    }
-
     LaunchedEffect(Unit) { loadActiveMessages() }
 
     val engine = remember { AiChat.getInferenceEngine(appContext) }
@@ -191,6 +189,8 @@ fun OffiaChatScreen() {
     var modelName by remember { mutableStateOf(prefs.getString(PREF_MODEL_NAME, null)) }
     var modelReady by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
+    var generating by remember { mutableStateOf(false) }
+    var generationJob by remember { mutableStateOf<Job?>(null) }
     var modelProbe by remember { mutableStateOf<GgufProbe?>(null) }
     var lastMemoryStatus by remember { mutableStateOf(if (memory.available) MemoryStatus.MISS else MemoryStatus.UNAVAILABLE) }
     var lastMemoryIds by remember { mutableStateOf<List<String>>(emptyList()) }
@@ -264,6 +264,62 @@ fun OffiaChatScreen() {
                 status = "Exportação da Memoria.ia salva"
             } catch (e: Exception) {
                 status = "Erro ao salvar memória • ${e.message ?: e.javaClass.simpleName}"
+            }
+        }
+    }
+
+    fun regenerateResponse(responseId: String) {
+        if (busy || !modelReady) return
+        val responseIndex = messages.indexOfFirst { it.id == responseId }
+        if (responseIndex < 0) return
+        val userIndex = (responseIndex - 1 downTo 0).firstOrNull { messages[it].role == "Você" } ?: return
+        val userText = messages[userIndex].text
+        val previous = messages[responseIndex]
+        val auditedMemory = previous.memory?.copy(learnedMemoryIds = emptyList())
+        auditedMemory?.let {
+            lastMemoryStatus = it.status
+            lastMemoryIds = it.memoryIds
+            lastTrajectoryUsed = it.trajectoryUsed
+            lastWindowCount = it.conversationWindowCount
+        }
+
+        messages[responseIndex] = previous.copy(
+            text = "…",
+            memory = auditedMemory,
+            generation = GenerationMetadata(source = ResponseSource.LOCAL, modelName = modelName),
+        )
+
+        generationJob = scope.launch {
+            busy = true
+            generating = true
+            status = "Offline • regenerando localmente…"
+            val answer = StringBuilder()
+            try {
+                val prompt = materializePrompt(userText, auditedMemory)
+                val generationStartedAt = System.currentTimeMillis()
+                engine.sendUserPrompt(prompt, predictLength = 512).collect { token ->
+                    answer.append(token)
+                    messages[responseIndex] = messages[responseIndex].copy(text = answer.toString())
+                }
+                val generationLatency = System.currentTimeMillis() - generationStartedAt
+                messages[responseIndex] = messages[responseIndex].copy(
+                    text = answer.toString().ifBlank { "O modelo não gerou resposta." },
+                    generation = messages[responseIndex].generation?.copy(latencyMs = generationLatency),
+                )
+                saveWorkspace()
+                status = "Offline • ${modelName ?: "GGUF"} pronto"
+            } catch (_: CancellationException) {
+                if (answer.isEmpty()) messages[responseIndex] = previous
+                saveWorkspace()
+                status = "Offline • geração interrompida"
+            } catch (e: Exception) {
+                messages[responseIndex] = previous
+                saveWorkspace()
+                status = "Erro ao regenerar • ${e.message ?: e.javaClass.simpleName}"
+            } finally {
+                generating = false
+                generationJob = null
+                busy = false
             }
         }
     }
@@ -359,9 +415,15 @@ fun OffiaChatScreen() {
                     )
                     Spacer(Modifier.width(8.dp))
                     Button(
-                        enabled = input.isNotBlank() && modelReady && !busy,
+                        enabled = generating || (input.isNotBlank() && modelReady && !busy),
                         modifier = Modifier.heightIn(min = 56.dp),
                         onClick = {
+                            if (generating) {
+                                status = "Offline • interrompendo geração…"
+                                generationJob?.cancel()
+                                return@Button
+                            }
+
                             val text = input.trim()
                             val sessionIdForResolve = activeSessionId
                             val trajectoryWindow = messages
@@ -388,7 +450,7 @@ fun OffiaChatScreen() {
                                 generation = GenerationMetadata(source = ResponseSource.LOCAL, modelName = modelName),
                             )
                             val responseIndex = messages.lastIndex
-                            scope.launch {
+                            generationJob = scope.launch {
                                 busy = true
                                 saveWorkspace()
                                 status = "Offline • consultando memória local…"
@@ -411,12 +473,14 @@ fun OffiaChatScreen() {
 
                                     val prompt = materializePrompt(text, resolution)
                                     status = "Offline • gerando localmente…"
+                                    generating = true
                                     val generationStartedAt = System.currentTimeMillis()
                                     val answer = StringBuilder()
                                     engine.sendUserPrompt(prompt, predictLength = 512).collect { token ->
                                         answer.append(token)
                                         messages[responseIndex] = messages[responseIndex].copy(text = answer.toString())
                                     }
+                                    generating = false
                                     val generationLatency = System.currentTimeMillis() - generationStartedAt
                                     messages[responseIndex] = messages[responseIndex].copy(
                                         generation = messages[responseIndex].generation?.copy(latencyMs = generationLatency),
@@ -439,6 +503,12 @@ fun OffiaChatScreen() {
                                     }
                                     saveWorkspace()
                                     status = "Offline • ${modelName ?: "GGUF"} pronto"
+                                } catch (_: CancellationException) {
+                                    if (messages[responseIndex].text == "…") {
+                                        messages[responseIndex] = messages[responseIndex].copy(text = "Geração interrompida.")
+                                    }
+                                    saveWorkspace()
+                                    status = "Offline • geração interrompida"
                                 } catch (e: Exception) {
                                     messages[responseIndex] = messages[responseIndex].copy(
                                         text = "Erro local: ${e.message ?: e.javaClass.simpleName}",
@@ -446,11 +516,13 @@ fun OffiaChatScreen() {
                                     saveWorkspace()
                                     status = "Erro no ciclo local"
                                 } finally {
+                                    generating = false
+                                    generationJob = null
                                     busy = false
                                 }
                             }
                         },
-                    ) { Text("Enviar") }
+                    ) { Text(if (generating) "Parar" else "Enviar") }
                 }
             }
         },
@@ -461,7 +533,11 @@ fun OffiaChatScreen() {
             contentPadding = PaddingValues(vertical = 12.dp),
         ) {
             items(messages, key = { it.id }) { message ->
-                MessageCard(message)
+                MessageCard(
+                    message = message,
+                    busy = busy,
+                    onRegenerate = if (modelReady) ({ responseId -> regenerateResponse(responseId) }) else null,
+                )
             }
         }
     }
