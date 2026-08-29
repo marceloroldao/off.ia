@@ -124,7 +124,9 @@ class HttpModelDownloadProvider(
                 if (read > 0) digest.update(buffer, 0, read)
             }
         }
-        val actual = digest.digest().joinToString("") { "%02x".format(it) }
+        val actual = digest.digest().joinToString("") { byte ->
+            (byte.toInt() and 0xff).toString(16).padStart(2, '0')
+        }
         return actual.equals(descriptor.sha256, ignoreCase = true)
     }
 
