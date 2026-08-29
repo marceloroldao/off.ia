@@ -39,7 +39,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           repository: marceloroldao/memoria.ia
-          ref: a877c1936b27b4c16834e6ae5eef4b2316aeba23
+          ref: b3222e97245cf70a495dc2c259cf333d995a5b5e
           path: android/vendor/memoria.ia
 
       - name: Checkout pinned Resolutive-DB Android ABI
