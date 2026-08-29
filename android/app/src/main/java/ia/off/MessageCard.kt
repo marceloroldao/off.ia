@@ -1,11 +1,16 @@
 package ia.off
 
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -19,6 +24,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 
@@ -26,10 +32,16 @@ import androidx.compose.ui.unit.dp
 fun MessageCard(
     message: ChatMessage,
     modifier: Modifier = Modifier,
+    busy: Boolean = false,
+    onRegenerate: ((String) -> Unit)? = null,
+    onCuriosity: ((String) -> Unit)? = null,
+    onImprove: ((String) -> Unit)? = null,
 ) {
     val clipboard = LocalClipboardManager.current
+    val context = LocalContext.current
     val isUser = message.role == "Você"
     var memoryExpanded by remember(message.id) { mutableStateOf(false) }
+    var moreExpanded by remember(message.id) { mutableStateOf(false) }
 
     Row(
         modifier = modifier.fillMaxWidth(),
@@ -54,15 +66,54 @@ fun MessageCard(
             }
 
             if (!isUser && message.text != "…") {
-                Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                Row(
+                    modifier = Modifier.horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
                     TextButton(onClick = { clipboard.setText(AnnotatedString(message.text)) }) {
                         Text("Copiar")
                     }
                     TextButton(onClick = { memoryExpanded = !memoryExpanded }) {
                         Text(if (memoryExpanded) "Ocultar memória" else "Memória")
                     }
-                    TextButton(enabled = false, onClick = {}) { Text("Regenerar") }
-                    TextButton(enabled = false, onClick = {}) { Text("⋯") }
+                    TextButton(
+                        enabled = onCuriosity != null && !busy,
+                        onClick = { onCuriosity?.invoke(message.id) },
+                    ) { Text("Curiosidade") }
+                    TextButton(
+                        enabled = onImprove != null && !busy,
+                        onClick = { onImprove?.invoke(message.id) },
+                    ) { Text("Melhorar") }
+                    TextButton(
+                        enabled = onRegenerate != null && !busy,
+                        onClick = { onRegenerate?.invoke(message.id) },
+                    ) { Text("Regenerar") }
+                    Box {
+                        TextButton(onClick = { moreExpanded = true }) { Text("⋯") }
+                        DropdownMenu(
+                            expanded = moreExpanded,
+                            onDismissRequest = { moreExpanded = false },
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Compartilhar resposta") },
+                                onClick = {
+                                    moreExpanded = false
+                                    sharePlainText(
+                                        context = context.applicationContext,
+                                        subject = "Resposta do OFF.IA",
+                                        text = message.text,
+                                    )
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Copiar resposta") },
+                                onClick = {
+                                    moreExpanded = false
+                                    clipboard.setText(AnnotatedString(message.text))
+                                },
+                            )
+                        }
+                    }
                 }
             }
 
