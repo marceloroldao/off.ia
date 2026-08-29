@@ -56,7 +56,12 @@ data class CuriosityResult(
     val sources: List<CuriositySource>,
 )
 
-/** Public-web acquisition only. This provider must never mutate Memoria.ia directly. */
+/**
+ * Public-web acquisition only. A provider returns source material + provenance
+ * to OFF.IA for local synthesis. It must never mutate Memoria.ia or BDR directly;
+ * promotion of public knowledge into another memory/network layer is a separate,
+ * explicit policy decision.
+ */
 interface CuriosityProvider {
     val available: Boolean
     suspend fun acquire(request: CuriosityRequest): CuriosityResult
