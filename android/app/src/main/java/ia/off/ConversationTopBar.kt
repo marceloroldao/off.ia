@@ -22,6 +22,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 
@@ -42,6 +43,7 @@ fun ConversationTopBar(
     onCopiedConversation: () -> Unit,
 ) {
     val clipboard = LocalClipboardManager.current
+    val context = LocalContext.current
     var sessionMenuExpanded by remember { mutableStateOf(false) }
     var actionsExpanded by remember { mutableStateOf(false) }
     var renameDialogVisible by remember { mutableStateOf(false) }
@@ -92,6 +94,17 @@ fun ConversationTopBar(
                             actionsExpanded = false
                             clipboard.setText(AnnotatedString(activeSession.toPlainText()))
                             onCopiedConversation()
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Compartilhar conversa") },
+                        onClick = {
+                            actionsExpanded = false
+                            sharePlainText(
+                                context = context.applicationContext,
+                                subject = activeSession.title,
+                                text = activeSession.toPlainText(),
+                            )
                         },
                     )
                     DropdownMenuItem(
