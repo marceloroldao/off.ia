@@ -193,6 +193,7 @@ fun OffiaChatScreen() {
     var lastMemoryIds by remember { mutableStateOf<List<String>>(emptyList()) }
     var lastTrajectoryUsed by remember { mutableStateOf(false) }
     var lastWindowCount by remember { mutableIntStateOf(0) }
+    var pendingMemoryExport by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
         val savedFile = prefs.getString(PREF_MODEL_PATH, null)?.let(::File)
@@ -231,6 +232,29 @@ fun OffiaChatScreen() {
             } catch (e: Exception) {
                 status = "Erro no modelo • ${e.message ?: e.javaClass.simpleName}"
             } finally { busy = false }
+        }
+    }
+
+    val memoryExportPicker = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json"),
+    ) { uri ->
+        val snapshot = pendingMemoryExport
+        pendingMemoryExport = null
+        if (uri == null || snapshot == null) return@rememberLauncherForActivityResult
+        scope.launch {
+            status = "Salvando exportação da Memoria.ia…"
+            try {
+                withContext(Dispatchers.IO) {
+                    context.contentResolver.openOutputStream(uri, "w").use { output ->
+                        requireNotNull(output) { "Não foi possível abrir o arquivo de destino" }
+                        output.write(snapshot.toByteArray(Charsets.UTF_8))
+                        output.flush()
+                    }
+                }
+                status = "Exportação da Memoria.ia salva"
+            } catch (e: Exception) {
+                status = "Erro ao salvar memória • ${e.message ?: e.javaClass.simpleName}"
+            }
         }
     }
 
@@ -284,7 +308,26 @@ fun OffiaChatScreen() {
                         Text(if (modelName == null) "Modelo" else "Trocar")
                     }
                 }
-                TextButton(enabled = false, onClick = {}) { Text("Exportar Memoria.ia — aguardando integração") }
+                TextButton(
+                    enabled = memory.available && !busy,
+                    onClick = {
+                        scope.launch {
+                            busy = true
+                            status = "Preparando exportação da Memoria.ia…"
+                            try {
+                                memory.flush()
+                                pendingMemoryExport = collectFullMemorySnapshot(memory)
+                                memoryExportPicker.launch("offia-memoria-${System.currentTimeMillis()}.json")
+                                status = "Exportação pronta para salvar"
+                            } catch (e: Exception) {
+                                pendingMemoryExport = null
+                                status = "Erro ao exportar memória • ${e.message ?: e.javaClass.simpleName}"
+                            } finally {
+                                busy = false
+                            }
+                        }
+                    },
+                ) { Text("Exportar Memoria.ia") }
             }
         },
         bottomBar = {
