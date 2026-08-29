@@ -15,6 +15,7 @@ enum class ResponseSource {
 data class ResponseMemoryMetadata(
     val status: MemoryStatus,
     val memoryIds: List<String> = emptyList(),
+    val learnedMemoryIds: List<String> = emptyList(),
     val confidence: Double? = null,
     val selectedContext: String = "",
     val trajectoryUsed: Boolean = false,
