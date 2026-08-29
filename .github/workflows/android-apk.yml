@@ -6,6 +6,7 @@ on:
     branches:
       - main
       - feat/android-mvp
+      - experiment/android-kv-cache-quant
     paths:
       - 'android/**'
       - '.github/workflows/android-apk.yml'
@@ -21,6 +22,12 @@ concurrency:
 jobs:
   build-debug-apk:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        kv_cache: [f16, q8_0, q4_0]
+    env:
+      OFFIA_KV_CACHE_TYPE: ${{ matrix.kv_cache }}
 
     steps:
       - name: Checkout OFF.IA
@@ -34,6 +41,14 @@ jobs:
           git -C android/vendor/llama.cpp fetch --depth 1 origin ca3d5a3e10d53f7ea672cb9b6178faca3e2807bc
           git -C android/vendor/llama.cpp checkout --detach ca3d5a3e10d53f7ea672cb9b6178faca3e2807bc
           python3 android/scripts/patch_llama_android_diagnostics.py
+          python3 android/scripts/patch_llama_kv_cache.py
+
+      - name: Verify effective KV-cache patch
+        shell: bash
+        run: |
+          grep -q "OFF.IA KV cache mode: $OFFIA_KV_CACHE_TYPE" android/vendor/llama.cpp/examples/llama.android/lib/src/main/cpp/ai_chat.cpp
+          grep -q "ctx_params.type_k" android/vendor/llama.cpp/examples/llama.android/lib/src/main/cpp/ai_chat.cpp
+          grep -q "ctx_params.type_v" android/vendor/llama.cpp/examples/llama.android/lib/src/main/cpp/ai_chat.cpp
 
       - name: Checkout pinned Memoria.ia mobile runtime
         uses: actions/checkout@v6
@@ -80,10 +95,22 @@ jobs:
         run: |
           "$ANDROID_HOME/build-tools/36.0.0/apksigner" verify --print-certs android/app/build/outputs/apk/debug/app-debug.apk
 
-      - name: Upload OFF.IA full offline APK
+      - name: Write variant manifest
+        shell: bash
+        run: |
+          printf 'kv_cache=%s\nllama_commit=%s\nmemoria_commit=%s\nbdr_commit=%s\n' \
+            "$OFFIA_KV_CACHE_TYPE" \
+            'ca3d5a3e10d53f7ea672cb9b6178faca3e2807bc' \
+            '803845d188f2ad6ae1a88bc3d3079ae90ee6d37f' \
+            '1f6b7ccbe16bdfed2f1b5dcebceb17887bf6916e' \
+            > android/app/build/outputs/apk/debug/variant.txt
+
+      - name: Upload OFF.IA KV-cache experiment APK
         uses: actions/upload-artifact@v6
         with:
-          name: offia-android-full-offline-debug
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: offia-android-kv-${{ matrix.kv_cache }}
+          path: |
+            android/app/build/outputs/apk/debug/app-debug.apk
+            android/app/build/outputs/apk/debug/variant.txt
           if-no-files-found: error
           retention-days: 14
