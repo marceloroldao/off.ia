@@ -8,9 +8,7 @@ OFF.IA treats Memoria.ia as the owner of memory semantics and Resolutive-DB as t
 
 **Status:** RESOLVED IN V1 CANDIDATE.
 
-The Memoria.ia v1 candidate now persists the ProductEvidenceService contract through SQLite and native Resolutive-DB v1.1, with restart-safe validation. The final episodic Product API candidate is merged at:
-
-`b4d6363a99fc692283f3f10b2ae851648426794e`
+The Memoria.ia v1 candidate persists ProductEvidenceService state through the supported persistence boundary and later gained the mobile atomic BDR path used by OFF.IA Android.
 
 OFF.IA must continue consuming Memoria.ia's persistence boundary rather than addressing BDR records directly.
 
@@ -18,61 +16,53 @@ OFF.IA must continue consuming Memoria.ia's persistence boundary rather than add
 
 **Project:** `marceloroldao/memoria.ia`
 
-**Status:** RESOLVED IN PRODUCT API CANDIDATE — Memoria.ia Issue #53 closed.
+**Status:** RESOLVED IN PRODUCT API CANDIDATE — Memoria.ia Issue #53 closed; native/mobile parity subsequently integrated.
 
-Available product contracts:
+Available behavior includes:
 
-- `POST /api/v1/conversation/ingest`
-- `POST /api/v1/conversation/resolve`
-- `HIT | MISS | UNRESOLVED`
-- confidence
-- memory IDs
-- exact selected source context
-- relation metadata
-- source provenance / authority / ultimate-source lineage
-- correction/supersession support
+- conversational ingest/resolve;
+- `HIT | MISS | UNRESOLVED`;
+- confidence;
+- memory IDs;
+- exact selected source context;
+- relation metadata;
+- source provenance / authority / ultimate-source lineage;
+- correction/supersession support;
+- native Android/mobile semantic relation handling.
 
-The implementation remains domain-agnostic and is validated through restart-safe persistence.
+The implementation remains domain-agnostic.
 
 ## DR-003 — Generic episodic/temporal recall
 
 **Project:** `marceloroldao/memoria.ia`
 
-**Status:** RESOLVED IN PRODUCT API CANDIDATE.
+**Status:** RESOLVED IN PRODUCT API CANDIDATE AND NATIVE MOBILE RUNTIME.
 
-Available contracts:
-
-- `POST /api/v1/episodes`
-- `POST /api/v1/episodes/recall`
-- ordered/time-addressable generic episodes
-- exact selected context
-- episode IDs, confidence, order/timestamp/event metadata
-- provenance fields
-- ambiguity -> `UNRESOLVED`
-
-Final merge commit: `b4d6363a99fc692283f3f10b2ae851648426794e`.
+Available behavior includes ordered/time-addressable generic episodes, selected context, episode IDs, confidence, order/timestamp/event metadata, provenance and ambiguity -> `UNRESOLVED`.
 
 ## DR-004 — Android/mobile parity with Memoria.ia v1 candidate
 
 **Project:** `marceloroldao/memoria.ia`
 
-**Tracking:** Issue #50 / draft PR #51.
+**Tracking:** Memoria.ia Issue #50 and OFF.IA Issue #3 / PR #4.
 
-**Status:** OPEN — BLOCKS claiming that the Android APK is exercising the new v1 candidate semantics.
+**Status:** MEMORIA.IA SIDE SUBSTANTIALLY COMPLETE; OFF.IA DEVICE ACCEPTANCE REMAINS.
 
-The current OFF.IA APK consumes the draft native mobile runtime from Memoria.ia PR #51. That ABI predates the stronger Product API semantics now present at `b4d6363...`.
+Current OFF.IA Android consumes the frozen Memoria.ia mobile ABI v1 and durable atomic BDR path rather than the superseded draft PR #51 interface.
 
-Required mobile parity includes:
+Current integration includes:
 
-- conversational ingest with session/order/source lineage;
-- semantic/relational resolve with `HIT | MISS | UNRESOLVED`;
+- semantic/relational resolve;
+- provenance/anti-self-confirmation;
+- episodic recall;
 - exact selected context + IDs + confidence;
-- provenance/authority + ultimate-source tracing;
-- generic episode record/recall;
-- BDR-backed restart persistence;
-- Android arm64-v8a CI coverage.
+- BDR-backed restart reconstruction;
+- arm64-v8a native build/link;
+- active-session trajectory-capable resolve on the current pinned Memoria.ia runtime.
 
-OFF.IA must not port the Python semantic implementation into the app as a substitute.
+Remaining acceptance is consumer/device evidence tracked in OFF.IA Issue #3: same-session paraphrase, kill/restart durable recall and airplane-mode end-to-end behavior.
+
+OFF.IA must not port Memoria.ia semantics into Kotlin as a substitute.
 
 ## DR-005 — Mobile memory export / diagnostic snapshot
 
@@ -92,16 +82,46 @@ The Android UI may show the action as pending until Memoria.ia exposes the contr
 
 **Tracking:** Issue #56.
 
-**Status:** OPEN.
+**Status:** PARTIALLY INTEGRATED; FINAL UPSTREAM/DEVICE VALIDATION OPEN.
 
-Real chat tests show that an isolated latest utterance is insufficient for references such as `e o azul?`, `e dos dois?` and `qual modelo?`.
+The current OFF.IA Android branch submits a bounded active-session window together with the new message. The pinned Memoria.ia runtime includes JSON trajectory wiring and keeps semantic trajectory selection inside Memoria.ia.
 
-The current v1 Product API candidate `ConversationResolveRequest` accepts `query + session_id`, but not an ordered recent conversation window. The desired boundary is:
+Desired invariant remains:
 
 `recent conversation window + new message -> Memoria.ia -> trajectory resolution -> persistent retrieval -> minimal selected context -> LLM`
 
-The full window must not automatically be forwarded to the LLM; selection remains Memoria.ia's responsibility.
+The full window must not automatically be forwarded to the LLM. Selection remains Memoria.ia's responsibility.
+
+Issue #56 remains the upstream tracker for final window/multi-source/reference behavior and real-device regression closure.
+
+## DR-007 — Next product/UX layer
+
+**Project:** `marceloroldao/off.ia`
+
+**Tracking:** OFF.IA Issue #5 and `docs/NEXT_PRODUCT_UX_ROADMAP.md`.
+
+**Status:** PLANNED FOR NEXT UPDATES; DOES NOT BLOCK CURRENT PR #4 / ISSUE #3 ACCEPTANCE.
+
+This roadmap includes:
+
+- modern chat-style visual shell;
+- delete/rename/copy/share/search conversation management;
+- per-response `Copy | Memory | Curiosity | Improve | Regenerate | More` actions;
+- per-message persisted memory audit metadata;
+- Markdown/code rendering with per-block copy;
+- stop-generation and local regenerate;
+- first-run automatic recommended GGUF download when online, while retaining manual model import;
+- model manager and compatibility/integrity/license metadata;
+- settings for General, Models, Memoria.ia, Storage, Privacy/Network and Laboratory mode;
+- `Curiosity` as explicit optional Web knowledge acquisition with source visibility and external provenance;
+- `Improve` as optional external intelligence through provider adapters such as OpenAI API, Gemini API and future MA2A;
+- credentials kept outside Memoria.ia/BDR in secure Android credential storage;
+- local-first routing and explicit authorization before cloud transmission;
+- isolated network boundaries for model download, Curiosity and external Improve;
+- normal local chat/Memoria.ia/BDR/llama.cpp operation remaining functional without network.
+
+Memoria.ia #55 remains a prerequisite for true memory export. MA2A integration remains a future provider/route and must not block the initial local product release.
 
 ## Release-gate separation
 
-Memoria.ia Issue #52 controls v1.0 RC readiness for the Product API candidate. Android/mobile parity requests above are integration dependencies for OFF.IA and should not silently expand the RC scope unless the Memoria.ia release explicitly declares them release-blocking.
+The current Android PR #4 / Issue #3 device acceptance remains the immediate integration gate. The product/UX roadmap in DR-007 should be implemented incrementally afterward without weakening the already validated offline architecture.
