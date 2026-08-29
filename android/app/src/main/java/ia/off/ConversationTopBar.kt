@@ -46,6 +46,7 @@ fun ConversationTopBar(
     var actionsExpanded by remember { mutableStateOf(false) }
     var renameDialogVisible by remember { mutableStateOf(false) }
     var deleteDialogVisible by remember { mutableStateOf(false) }
+    var settingsVisible by remember { mutableStateOf(false) }
     var renameText by remember(activeSession.id) { mutableStateOf(activeSession.title) }
 
     Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
@@ -98,6 +99,13 @@ fun ConversationTopBar(
                         onClick = {
                             actionsExpanded = false
                             deleteDialogVisible = true
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Configurações") },
+                        onClick = {
+                            actionsExpanded = false
+                            settingsVisible = true
                         },
                     )
                 }
@@ -154,6 +162,19 @@ fun ConversationTopBar(
             dismissButton = {
                 TextButton(onClick = { deleteDialogVisible = false }) { Text("Cancelar") }
             },
+        )
+    }
+
+    if (settingsVisible) {
+        SettingsPanel(
+            modelSummary = modelSummary,
+            memoryAvailable = memoryAvailable,
+            onChooseModel = {
+                settingsVisible = false
+                onChooseModel()
+            },
+            onExportMemory = onExportMemory,
+            onDismiss = { settingsVisible = false },
         )
     }
 }
