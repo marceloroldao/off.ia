@@ -94,6 +94,22 @@ class NativeMemoryGateway(context: Context) : MemoryGateway, AutoCloseable {
             MemoryLearnResult(memoryIds = ids)
         }
 
+    override suspend fun exportSnapshotPage(
+        turnOffset: Int,
+        episodeOffset: Int,
+        limit: Int,
+    ): String = withContext(Dispatchers.IO) {
+        require(turnOffset >= 0 && episodeOffset >= 0) { "Offsets de exportação inválidos" }
+        require(limit in 1..64) { "Limite de exportação deve estar entre 1 e 64" }
+        val request = JSONObject().apply {
+            put("turn_offset", turnOffset)
+            put("turn_limit", limit)
+            put("episode_offset", episodeOffset)
+            put("episode_limit", limit)
+        }
+        nativeExport(requireHandle(), request.toString())
+    }
+
     override suspend fun flush() = withContext(Dispatchers.IO) {
         nativeFlush(requireHandle())
     }
@@ -114,5 +130,6 @@ class NativeMemoryGateway(context: Context) : MemoryGateway, AutoCloseable {
     private external fun nativeClose(handle: Long)
     private external fun nativeResolve(handle: Long, requestJson: String): String
     private external fun nativeLearn(handle: Long, user: String, assistant: String): String
+    private external fun nativeExport(handle: Long, requestJson: String): String
     private external fun nativeFlush(handle: Long)
 }
