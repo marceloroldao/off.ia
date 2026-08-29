@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -36,7 +37,10 @@ fun SettingsPanel(
 ) {
     val context = LocalContext.current.applicationContext
     val store = remember { AppSettingsStore(context) }
+    val modelManager = remember { ModelManager(context) }
     var settings by remember { mutableStateOf(store.load()) }
+    var installedModels by remember { mutableStateOf(modelManager.installedModels()) }
+    var deleteCandidate by remember { mutableStateOf<InstalledModel?>(null) }
 
     fun update(next: AppSettings) {
         settings = next
@@ -57,9 +61,23 @@ fun SettingsPanel(
                 style = MaterialTheme.typography.bodySmall,
             )
 
-            SettingsSection("Modelo") {
+            SettingsSection("Modelos") {
                 Text(modelSummary ?: "Nenhum modelo carregado", style = MaterialTheme.typography.bodyMedium)
+                Text(
+                    "${installedModels.size} instalado(s) • ${modelManager.storageBytes().formatStorageSize()}",
+                    style = MaterialTheme.typography.labelMedium,
+                )
+                installedModels.forEach { model ->
+                    InstalledModelRow(
+                        model = model,
+                        onDelete = { deleteCandidate = model },
+                    )
+                }
                 OutlinedButton(onClick = onChooseModel) { Text("Escolher / importar GGUF") }
+                Text(
+                    "Download automático será adicionado pelo Model Download Manager; este build ainda não possui acesso à Internet.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
             }
 
             SettingsSection("Memoria.ia") {
@@ -113,6 +131,48 @@ fun SettingsPanel(
             }
             Spacer(Modifier.height(24.dp))
         }
+    }
+
+    deleteCandidate?.let { candidate ->
+        AlertDialog(
+            onDismissRequest = { deleteCandidate = null },
+            title = { Text("Excluir modelo?") },
+            text = {
+                Text("${candidate.name}\n${candidate.sizeBytes.formatStorageSize()}\n\nO modelo GGUF será removido do armazenamento local.")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    runCatching { modelManager.delete(candidate) }
+                    installedModels = modelManager.installedModels()
+                    deleteCandidate = null
+                }) { Text("Excluir") }
+            },
+            dismissButton = {
+                TextButton(onClick = { deleteCandidate = null }) { Text("Cancelar") }
+            },
+        )
+    }
+}
+
+@Composable
+private fun InstalledModelRow(
+    model: InstalledModel,
+    onDelete: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                if (model.active) "${model.name} • ativo" else model.name,
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            val gguf = model.ggufVersion?.let { "GGUF v$it" } ?: "GGUF inválido/desconhecido"
+            Text("$gguf • ${model.sizeBytes.formatStorageSize()}", style = MaterialTheme.typography.bodySmall)
+        }
+        TextButton(enabled = !model.active, onClick = onDelete) { Text("Excluir") }
     }
 }
 
