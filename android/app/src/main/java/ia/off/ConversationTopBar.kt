@@ -34,11 +34,14 @@ fun ConversationTopBar(
     sessions: List<ChatSession>,
     busy: Boolean,
     memoryAvailable: Boolean,
+    modelDownloadState: ModelDownloadState,
     onSelectSession: (String) -> Unit,
     onNewConversation: () -> Unit,
     onRenameConversation: (String) -> Unit,
     onDeleteConversation: () -> Unit,
     onChooseModel: () -> Unit,
+    onDownloadDefaultModel: () -> Unit,
+    onCancelModelDownload: () -> Unit,
     onExportMemory: () -> Unit,
     onCopiedConversation: () -> Unit,
 ) {
@@ -182,10 +185,13 @@ fun ConversationTopBar(
         SettingsPanel(
             modelSummary = modelSummary,
             memoryAvailable = memoryAvailable,
+            modelDownloadState = modelDownloadState,
             onChooseModel = {
                 settingsVisible = false
                 onChooseModel()
             },
+            onDownloadDefaultModel = onDownloadDefaultModel,
+            onCancelModelDownload = onCancelModelDownload,
             onExportMemory = onExportMemory,
             onDismiss = { settingsVisible = false },
         )
