@@ -1,6 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Intentionally no INTERNET permission: the first MVP core path is offline-only. -->
+    <!--
+      OFF.IA remains local-first. Network permission is used only by explicit
+      online capabilities such as first-run model download, Curiosity and
+      external Improve providers. llama.cpp, Memoria.ia and BDR remain local.
+    -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+
     <application
         android:allowBackup="false"
         android:extractNativeLibs="true"
