@@ -135,12 +135,35 @@ private suspend fun loadLocalModel(engine: InferenceEngine, file: File): GgufPro
     return probe
 }
 
+private fun downloadStatusText(
+    state: ModelDownloadState,
+    descriptor: ModelDownloadDescriptor,
+): String = when (state) {
+    ModelDownloadState.Idle -> "Online • preparando download do modelo"
+    is ModelDownloadState.Downloading -> {
+        val total = state.totalBytes
+        if (total != null && total > 0L) {
+            val percent = ((state.bytesDownloaded * 100L) / total).coerceIn(0L, 100L)
+            "Online • baixando ${descriptor.displayName} • $percent%"
+        } else {
+            "Online • baixando ${descriptor.displayName} • ${state.bytesDownloaded.formatStorageSize()}"
+        }
+    }
+    ModelDownloadState.Verifying -> "Local • verificando SHA-256 do modelo…"
+    is ModelDownloadState.Ready -> "Local • modelo baixado e validado"
+    is ModelDownloadState.Failed -> "Falha no download • ${state.message}"
+    ModelDownloadState.Cancelled -> "Download do modelo cancelado"
+}
+
 @Composable
 fun OffiaChatScreen() {
     val context = LocalContext.current
     val appContext = context.applicationContext
     val scope = rememberCoroutineScope()
     val prefs = remember { appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE) }
+    val settingsStore = remember { AppSettingsStore(appContext) }
+    val modelManager = remember { ModelManager(appContext) }
+    val modelDownloader = remember { HttpModelDownloadProvider(appContext) }
     val chatStore = remember { ChatStore(appContext) }
     val initialWorkspace = remember { chatStore.load() }
     val sessions = remember { mutableStateListOf<ChatSession>().apply { addAll(initialWorkspace.sessions) } }
@@ -177,12 +200,6 @@ fun OffiaChatScreen() {
     val memory: MemoryGateway = remember {
         try { NativeMemoryGateway(appContext) } catch (_: Throwable) { UnavailableMemoryGateway }
     }
-    DisposableEffect(memory) {
-        onDispose {
-            runCatching { saveWorkspace() }
-            if (memory is NativeMemoryGateway) memory.close()
-        }
-    }
 
     var input by remember { mutableStateOf("") }
     var status by remember { mutableStateOf("Offline • inicializando motor local") }
@@ -191,12 +208,22 @@ fun OffiaChatScreen() {
     var busy by remember { mutableStateOf(false) }
     var generating by remember { mutableStateOf(false) }
     var generationJob by remember { mutableStateOf<Job?>(null) }
+    var modelDownloadJob by remember { mutableStateOf<Job?>(null) }
+    var modelDownloadState by remember { mutableStateOf<ModelDownloadState>(ModelDownloadState.Idle) }
     var modelProbe by remember { mutableStateOf<GgufProbe?>(null) }
     var lastMemoryStatus by remember { mutableStateOf(if (memory.available) MemoryStatus.MISS else MemoryStatus.UNAVAILABLE) }
     var lastMemoryIds by remember { mutableStateOf<List<String>>(emptyList()) }
     var lastTrajectoryUsed by remember { mutableStateOf(false) }
     var lastWindowCount by remember { mutableIntStateOf(0) }
     var pendingMemoryExport by remember { mutableStateOf<String?>(null) }
+
+    DisposableEffect(memory, modelDownloader) {
+        onDispose {
+            modelDownloader.cancel()
+            runCatching { saveWorkspace() }
+            if (memory is NativeMemoryGateway) memory.close()
+        }
+    }
 
     fun clearLastMemoryStatus() {
         lastMemoryStatus = if (memory.available) MemoryStatus.MISS else MemoryStatus.UNAVAILABLE
@@ -205,18 +232,127 @@ fun OffiaChatScreen() {
         lastWindowCount = 0
     }
 
+    suspend fun activateModel(file: File, displayName: String) {
+        modelReady = false
+        modelProbe = loadLocalModel(engine, file)
+        modelName = displayName
+        prefs.edit()
+            .putString(PREF_MODEL_PATH, file.absolutePath)
+            .putString(PREF_MODEL_NAME, displayName)
+            .apply()
+        modelReady = true
+    }
+
+    fun startDefaultModelDownload() {
+        if (modelDownloadJob?.isActive == true || busy) return
+        val descriptor = ModelCatalog.defaultModel
+
+        val installedDefault = modelManager.installedModels()
+            .firstOrNull { it.valid && it.name == descriptor.fileName }
+        if (installedDefault != null) {
+            modelDownloadState = ModelDownloadState.Ready(installedDefault.path)
+            modelDownloadJob = scope.launch {
+                busy = true
+                status = "Local • carregando ${descriptor.displayName}…"
+                try {
+                    activateModel(File(installedDefault.path), descriptor.displayName)
+                    status = "Offline • ${descriptor.displayName} pronto"
+                } catch (e: Exception) {
+                    modelReady = false
+                    status = "Erro no modelo • ${e.message ?: e.javaClass.simpleName}"
+                } finally {
+                    busy = false
+                    modelDownloadJob = null
+                }
+            }
+            return
+        }
+
+        val settings = settingsStore.load()
+        val network = currentNetworkState(appContext)
+        if (!network.connected || !network.validated) {
+            modelDownloadState = ModelDownloadState.Failed("Sem conexão com Internet validada")
+            status = "Sem modelo • conecte à Internet ou importe um GGUF"
+            return
+        }
+        if (settings.wifiOnlyModelDownloads && !network.wifi) {
+            modelDownloadState = ModelDownloadState.Failed("Aguardando Wi-Fi")
+            status = "Sem modelo • download configurado para aguardar Wi-Fi"
+            return
+        }
+
+        modelDownloadJob = scope.launch {
+            busy = true
+            status = "Online • iniciando download de ${descriptor.displayName}…"
+            val result = modelDownloader.download(descriptor) { next ->
+                scope.launch {
+                    modelDownloadState = next
+                    if (next is ModelDownloadState.Downloading || next is ModelDownloadState.Verifying) {
+                        status = downloadStatusText(next, descriptor)
+                    }
+                }
+            }
+
+            try {
+                modelDownloadState = result
+                when (result) {
+                    is ModelDownloadState.Ready -> {
+                        status = "Local • download validado; carregando modelo…"
+                        activateModel(File(result.localPath), descriptor.displayName)
+                        status = "Offline • ${descriptor.displayName} pronto"
+                    }
+                    is ModelDownloadState.Failed -> {
+                        status = "Falha no download • ${result.message}"
+                    }
+                    ModelDownloadState.Cancelled -> {
+                        status = "Download do modelo cancelado"
+                    }
+                    else -> {
+                        status = downloadStatusText(result, descriptor)
+                    }
+                }
+            } catch (e: Exception) {
+                modelReady = false
+                status = "Erro ao carregar modelo baixado • ${e.message ?: e.javaClass.simpleName}"
+            } finally {
+                busy = false
+                modelDownloadJob = null
+            }
+        }
+    }
+
     LaunchedEffect(Unit) {
         val savedFile = prefs.getString(PREF_MODEL_PATH, null)?.let(::File)
         if (savedFile != null && savedFile.isFile) {
             busy = true
             try {
-                modelProbe = loadLocalModel(engine, savedFile)
-                modelReady = true
-                status = "Offline • ${modelName ?: "GGUF"} pronto"
+                activateModel(savedFile, modelName ?: savedFile.name)
+                status = "Offline • ${modelName ?: savedFile.name} pronto"
             } catch (e: Exception) {
+                modelReady = false
                 status = "Erro no modelo • ${e.message ?: e.javaClass.simpleName}"
             } finally { busy = false }
-        } else status = "Offline • selecione um modelo GGUF"
+            return@LaunchedEffect
+        }
+
+        val installed = modelManager.installedModels().firstOrNull { it.valid }
+        if (installed != null) {
+            busy = true
+            try {
+                activateModel(File(installed.path), installed.name)
+                status = "Offline • ${installed.name} pronto"
+            } catch (e: Exception) {
+                modelReady = false
+                status = "Erro no modelo • ${e.message ?: e.javaClass.simpleName}"
+            } finally { busy = false }
+            return@LaunchedEffect
+        }
+
+        if (settingsStore.load().autoDownloadDefaultModel) {
+            startDefaultModelDownload()
+        } else {
+            status = "Sem modelo • baixe o modelo padrão ou importe um GGUF"
+        }
     }
 
     val modelPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -229,17 +365,15 @@ fun OffiaChatScreen() {
         try { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: SecurityException) {}
         scope.launch {
             busy = true
-            modelReady = false
+            modelDownloadState = ModelDownloadState.Idle
             status = "Importando e validando $name…"
             try {
                 val (localFile, importedProbe) = importModel(context, uri, name)
                 modelProbe = importedProbe
-                loadLocalModel(engine, localFile)
-                modelName = name
-                prefs.edit().putString(PREF_MODEL_PATH, localFile.absolutePath).putString(PREF_MODEL_NAME, name).apply()
-                modelReady = true
+                activateModel(localFile, name)
                 status = "Offline • $name pronto"
             } catch (e: Exception) {
+                modelReady = false
                 status = "Erro no modelo • ${e.message ?: e.javaClass.simpleName}"
             } finally { busy = false }
         }
@@ -329,11 +463,14 @@ fun OffiaChatScreen() {
         topBar = {
             ConversationTopBar(
                 status = status,
-                modelSummary = modelProbe?.let { "GGUF v${it.version} • ${it.sizeBytes / (1024 * 1024)} MB" },
+                modelSummary = modelProbe?.let {
+                    "${modelName ?: "GGUF"} • GGUF v${it.version} • ${it.sizeBytes / (1024 * 1024)} MB"
+                },
                 activeSession = activeSession(),
                 sessions = sessions,
                 busy = busy,
                 memoryAvailable = memory.available,
+                modelDownloadState = modelDownloadState,
                 onSelectSession = { sessionId ->
                     saveWorkspace()
                     activeSessionId = sessionId
@@ -367,6 +504,11 @@ fun OffiaChatScreen() {
                     status = "Conversa excluída"
                 },
                 onChooseModel = { modelPicker.launch(arrayOf("application/octet-stream", "*/*")) },
+                onDownloadDefaultModel = { startDefaultModelDownload() },
+                onCancelModelDownload = {
+                    modelDownloader.cancel()
+                    status = "Online • cancelando download do modelo…"
+                },
                 onExportMemory = {
                     scope.launch {
                         busy = true
