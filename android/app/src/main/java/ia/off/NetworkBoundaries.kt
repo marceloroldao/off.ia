@@ -1,0 +1,104 @@
+package ia.off
+
+data class ModelDownloadDescriptor(
+    val id: String,
+    val displayName: String,
+    val fileName: String,
+    val downloadUrl: String,
+    val expectedSizeBytes: Long?,
+    val sha256: String,
+    val licenseName: String,
+    val licenseUrl: String?,
+    val sourceUrl: String,
+)
+
+sealed interface ModelDownloadState {
+    data object Idle : ModelDownloadState
+    data class Downloading(
+        val bytesDownloaded: Long,
+        val totalBytes: Long?,
+    ) : ModelDownloadState
+    data object Verifying : ModelDownloadState
+    data class Ready(val localPath: String) : ModelDownloadState
+    data class Failed(val message: String) : ModelDownloadState
+    data object Cancelled : ModelDownloadState
+}
+
+/**
+ * Network implementation belongs behind this boundary. The current offline build
+ * intentionally provides no implementation and keeps INTERNET permission absent.
+ */
+interface ModelDownloadProvider {
+    suspend fun download(
+        descriptor: ModelDownloadDescriptor,
+        onState: (ModelDownloadState) -> Unit,
+    ): ModelDownloadState
+
+    fun cancel()
+}
+
+data class CuriositySource(
+    val title: String,
+    val url: String,
+    val domain: String,
+    val excerpt: String? = null,
+)
+
+data class CuriosityRequest(
+    val userQuestion: String,
+    val localAnswer: String,
+    val maxSources: Int = 5,
+)
+
+data class CuriosityResult(
+    val sourceText: String,
+    val sources: List<CuriositySource>,
+)
+
+/** Public-web acquisition only. This provider must never mutate Memoria.ia directly. */
+interface CuriosityProvider {
+    val available: Boolean
+    suspend fun acquire(request: CuriosityRequest): CuriosityResult
+}
+
+enum class ImproveProviderKind {
+    OPENAI,
+    GEMINI,
+    MA2A,
+}
+
+data class ImproveRequest(
+    val userQuestion: String,
+    val localAnswer: String,
+    val selectedMemoryContext: String? = null,
+)
+
+data class ImproveResult(
+    val provider: ImproveProviderKind,
+    val text: String,
+    val modelOrRoute: String? = null,
+)
+
+/**
+ * External improvement receives only explicitly selected minimal context.
+ * API credentials are outside Memoria.ia/BDR and must never enter diagnostic exports.
+ */
+interface ImproveProvider {
+    val kind: ImproveProviderKind
+    val available: Boolean
+    suspend fun improve(request: ImproveRequest): ImproveResult
+}
+
+object UnavailableCuriosityProvider : CuriosityProvider {
+    override val available: Boolean = false
+    override suspend fun acquire(request: CuriosityRequest): CuriosityResult =
+        error("Curiosidade não configurada")
+}
+
+class UnavailableImproveProvider(
+    override val kind: ImproveProviderKind,
+) : ImproveProvider {
+    override val available: Boolean = false
+    override suspend fun improve(request: ImproveRequest): ImproveResult =
+        error("Provedor ${kind.name} não configurado")
+}
