@@ -22,9 +22,9 @@ data class ChatWorkspace(
 /**
  * Durable UI transcript workspace.
  *
- * This remains separate from Memoria.ia. Sessions preserve visible chat history
- * and response diagnostics; semantic learning/retrieval remains owned by
- * Memoria.ia + BDR.
+ * This remains separate from Memoria.ia. Sessions preserve visible chat history,
+ * generation provenance and response diagnostics; semantic learning/retrieval
+ * remains owned by Memoria.ia + BDR.
  */
 class ChatStore(context: Context) {
     companion object {
@@ -126,6 +126,18 @@ class ChatStore(context: Context) {
                 put("source", generation.source.name)
                 generation.modelName?.let { put("model_name", it) }
                 generation.latencyMs?.let { put("latency_ms", it) }
+                if (generation.publicSources.isNotEmpty()) {
+                    put("public_sources", JSONArray().apply {
+                        generation.publicSources.forEach { source ->
+                            put(JSONObject().apply {
+                                put("title", source.title)
+                                put("url", source.url)
+                                put("domain", source.domain)
+                                source.excerpt?.let { put("excerpt", it) }
+                            })
+                        }
+                    })
+                }
             })
         }
     }
@@ -187,10 +199,29 @@ class ChatStore(context: Context) {
         val generation = generationJson?.let { item ->
             val source = runCatching { ResponseSource.valueOf(item.optString("source")) }.getOrNull()
                 ?: ResponseSource.LOCAL
+            val publicSources = buildList {
+                val array = item.optJSONArray("public_sources") ?: return@buildList
+                for (index in 0 until array.length()) {
+                    val sourceJson = array.optJSONObject(index) ?: continue
+                    val title = sourceJson.optString("title").trim()
+                    val url = sourceJson.optString("url").trim()
+                    val domain = sourceJson.optString("domain").trim()
+                    if (title.isBlank() || url.isBlank()) continue
+                    add(
+                        CuriositySource(
+                            title = title,
+                            url = url,
+                            domain = domain.ifBlank { "fonte pública" },
+                            excerpt = sourceJson.optString("excerpt").takeIf { it.isNotBlank() },
+                        ),
+                    )
+                }
+            }
             GenerationMetadata(
                 source = source,
                 modelName = item.optString("model_name").takeIf { it.isNotBlank() },
                 latencyMs = if (item.has("latency_ms") && !item.isNull("latency_ms")) item.optLong("latency_ms") else null,
+                publicSources = publicSources,
             )
         }
 
