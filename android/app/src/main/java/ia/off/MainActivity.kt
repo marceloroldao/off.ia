@@ -31,8 +31,6 @@ import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
-data class ChatMessage(val role: String, val text: String)
-
 data class GgufProbe(val sizeBytes: Long, val version: Int)
 
 private const val PREFS = "offia-local"
@@ -136,39 +134,6 @@ private suspend fun loadLocalModel(engine: InferenceEngine, file: File): GgufPro
 }
 
 @Composable
-private fun MemoryInspector(
-    status: MemoryStatus,
-    ids: List<String>,
-    confidence: Double?,
-    contextText: String,
-    trajectoryUsed: Boolean,
-    windowCount: Int,
-) {
-    var expanded by remember { mutableStateOf(false) }
-    if (status != MemoryStatus.HIT && contextText.isBlank()) return
-
-    TextButton(onClick = { expanded = !expanded }, contentPadding = PaddingValues(0.dp)) {
-        Text(if (expanded) "Ocultar memória usada" else "Ver memória usada")
-    }
-    if (expanded) {
-        Surface(tonalElevation = 2.dp, shape = MaterialTheme.shapes.medium, modifier = Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("Inspeção da Memoria.ia", style = MaterialTheme.typography.titleSmall)
-                Text("Status: $status", style = MaterialTheme.typography.bodySmall)
-                Text("IDs: ${if (ids.isEmpty()) "—" else ids.joinToString()}", style = MaterialTheme.typography.bodySmall)
-                confidence?.let { Text("Confiança: ${"%.3f".format(it)}", style = MaterialTheme.typography.bodySmall) }
-                Text("Trajetória: ${if (trajectoryUsed) "usada" else "não usada"} • janela=$windowCount", style = MaterialTheme.typography.bodySmall)
-                Text("Contexto enviado: ${contextText.length} caracteres", style = MaterialTheme.typography.bodySmall)
-                if (contextText.isNotBlank()) {
-                    HorizontalDivider()
-                    Text(contextText, style = MaterialTheme.typography.bodyMedium)
-                }
-            }
-        }
-    }
-}
-
-@Composable
 fun OffiaChatScreen() {
     val context = LocalContext.current
     val appContext = context.applicationContext
@@ -226,8 +191,6 @@ fun OffiaChatScreen() {
     var modelProbe by remember { mutableStateOf<GgufProbe?>(null) }
     var lastMemoryStatus by remember { mutableStateOf(if (memory.available) MemoryStatus.MISS else MemoryStatus.UNAVAILABLE) }
     var lastMemoryIds by remember { mutableStateOf<List<String>>(emptyList()) }
-    var lastMemoryConfidence by remember { mutableStateOf<Double?>(null) }
-    var lastMemoryContext by remember { mutableStateOf("") }
     var lastTrajectoryUsed by remember { mutableStateOf(false) }
     var lastWindowCount by remember { mutableIntStateOf(0) }
 
@@ -265,8 +228,9 @@ fun OffiaChatScreen() {
                 prefs.edit().putString(PREF_MODEL_PATH, localFile.absolutePath).putString(PREF_MODEL_NAME, name).apply()
                 modelReady = true
                 status = "Offline • $name pronto"
-            } catch (e: Exception) { status = "Erro no modelo • ${e.message ?: e.javaClass.simpleName}" }
-            finally { busy = false }
+            } catch (e: Exception) {
+                status = "Erro no modelo • ${e.message ?: e.javaClass.simpleName}"
+            } finally { busy = false }
         }
     }
 
@@ -276,7 +240,9 @@ fun OffiaChatScreen() {
             Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
                 Text("OFF.IA", style = MaterialTheme.typography.headlineMedium)
                 Text(status, style = MaterialTheme.typography.bodySmall)
-                modelProbe?.let { Text("GGUF v${it.version} • ${it.sizeBytes / (1024 * 1024)} MB", style = MaterialTheme.typography.labelSmall) }
+                modelProbe?.let {
+                    Text("GGUF v${it.version} • ${it.sizeBytes / (1024 * 1024)} MB", style = MaterialTheme.typography.labelSmall)
+                }
                 Spacer(Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Box {
@@ -293,12 +259,11 @@ fun OffiaChatScreen() {
                                         loadActiveMessages()
                                         lastMemoryStatus = if (memory.available) MemoryStatus.MISS else MemoryStatus.UNAVAILABLE
                                         lastMemoryIds = emptyList()
-                                        lastMemoryContext = ""
                                         lastTrajectoryUsed = false
                                         lastWindowCount = 0
                                         sessionMenuExpanded = false
                                         chatStore.save(ChatWorkspace(sessions.toMutableList(), activeSessionId))
-                                    }
+                                    },
                                 )
                             }
                         }
@@ -311,7 +276,6 @@ fun OffiaChatScreen() {
                         messages.clear()
                         lastMemoryStatus = if (memory.available) MemoryStatus.MISS else MemoryStatus.UNAVAILABLE
                         lastMemoryIds = emptyList()
-                        lastMemoryContext = ""
                         lastTrajectoryUsed = false
                         lastWindowCount = 0
                         chatStore.save(ChatWorkspace(sessions.toMutableList(), activeSessionId))
@@ -320,12 +284,12 @@ fun OffiaChatScreen() {
                         Text(if (modelName == null) "Modelo" else "Trocar")
                     }
                 }
-                TextButton(enabled = false, onClick = {}) { Text("Exportar Memoria.ia — aguardando #55") }
+                TextButton(enabled = false, onClick = {}) { Text("Exportar Memoria.ia — aguardando integração") }
             }
         },
         bottomBar = {
             Column(
-                Modifier.fillMaxWidth().imePadding().navigationBarsPadding().padding(horizontal = 12.dp, vertical = 10.dp)
+                Modifier.fillMaxWidth().imePadding().navigationBarsPadding().padding(horizontal = 12.dp, vertical = 10.dp),
             ) {
                 val memoryLabel = when (lastMemoryStatus) {
                     MemoryStatus.HIT -> "HIT"
@@ -335,8 +299,10 @@ fun OffiaChatScreen() {
                 }
                 val idsLabel = if (lastMemoryIds.isEmpty()) "" else " • ids=${lastMemoryIds.joinToString()}"
                 val trajectoryLabel = if (lastTrajectoryUsed) " • trajetória=$lastWindowCount" else ""
-                Text("Memoria: $memoryLabel$idsLabel$trajectoryLabel • Inferência: ${if (modelReady) "llama.cpp local" else "aguardando modelo"}", style = MaterialTheme.typography.labelSmall)
-                MemoryInspector(lastMemoryStatus, lastMemoryIds, lastMemoryConfidence, lastMemoryContext, lastTrajectoryUsed, lastWindowCount)
+                Text(
+                    "Memoria: $memoryLabel$idsLabel$trajectoryLabel • Inferência: ${if (modelReady) "llama.cpp local" else "aguardando modelo"}",
+                    style = MaterialTheme.typography.labelSmall,
+                )
                 Spacer(Modifier.height(8.dp))
                 Row(Modifier.fillMaxWidth()) {
                     OutlinedTextField(
@@ -345,7 +311,7 @@ fun OffiaChatScreen() {
                         enabled = !busy,
                         modifier = Modifier.weight(1f),
                         placeholder = { Text("Digite uma mensagem…") },
-                        maxLines = 4
+                        maxLines = 4,
                     )
                     Spacer(Modifier.width(8.dp))
                     Button(
@@ -367,8 +333,16 @@ fun OffiaChatScreen() {
                                 }
                                 .toList()
                             input = ""
-                            messages += ChatMessage("Você", text)
-                            messages += ChatMessage("OFF.IA", "…")
+                            messages += ChatMessage(
+                                role = "Você",
+                                text = text,
+                                generation = GenerationMetadata(source = ResponseSource.USER),
+                            )
+                            messages += ChatMessage(
+                                role = "OFF.IA",
+                                text = "…",
+                                generation = GenerationMetadata(source = ResponseSource.LOCAL, modelName = modelName),
+                            )
                             val responseIndex = messages.lastIndex
                             scope.launch {
                                 busy = true
@@ -378,51 +352,72 @@ fun OffiaChatScreen() {
                                     val resolution = memory.resolve(text, sessionIdForResolve, trajectoryWindow)
                                     lastMemoryStatus = resolution.status
                                     lastMemoryIds = resolution.memoryIds
-                                    lastMemoryConfidence = resolution.confidence
-                                    lastMemoryContext = resolution.contextItems.joinToString("\n")
                                     lastTrajectoryUsed = resolution.trajectoryUsed
                                     lastWindowCount = resolution.conversationWindowCount
-                                    val prompt = materializePrompt(text, resolution)
 
+                                    val responseMemory = ResponseMemoryMetadata(
+                                        status = resolution.status,
+                                        memoryIds = resolution.memoryIds,
+                                        confidence = resolution.confidence,
+                                        selectedContext = resolution.contextItems.joinToString("\n"),
+                                        trajectoryUsed = resolution.trajectoryUsed,
+                                        conversationWindowCount = resolution.conversationWindowCount,
+                                    )
+                                    messages[responseIndex] = messages[responseIndex].copy(memory = responseMemory)
+
+                                    val prompt = materializePrompt(text, resolution)
                                     status = "Offline • gerando localmente…"
+                                    val generationStartedAt = System.currentTimeMillis()
                                     val answer = StringBuilder()
                                     engine.sendUserPrompt(prompt, predictLength = 512).collect { token ->
                                         answer.append(token)
-                                        messages[responseIndex] = ChatMessage("OFF.IA", answer.toString())
+                                        messages[responseIndex] = messages[responseIndex].copy(text = answer.toString())
                                     }
+                                    val generationLatency = System.currentTimeMillis() - generationStartedAt
+                                    messages[responseIndex] = messages[responseIndex].copy(
+                                        generation = messages[responseIndex].generation?.copy(latencyMs = generationLatency),
+                                    )
 
                                     if (answer.isEmpty()) {
-                                        messages[responseIndex] = ChatMessage("OFF.IA", "O modelo não gerou resposta.")
+                                        messages[responseIndex] = messages[responseIndex].copy(text = "O modelo não gerou resposta.")
                                     } else if (memory.available) {
                                         status = "Offline • aprendendo turno…"
                                         val learned = memory.learnTurn(text, answer.toString())
                                         memory.flush()
-                                        if (learned.memoryIds.isNotEmpty()) lastMemoryIds = (lastMemoryIds + learned.memoryIds).distinct()
+                                        if (learned.memoryIds.isNotEmpty()) {
+                                            val currentMemory = messages[responseIndex].memory
+                                            if (currentMemory != null) {
+                                                messages[responseIndex] = messages[responseIndex].copy(
+                                                    memory = currentMemory.copy(learnedMemoryIds = learned.memoryIds.distinct()),
+                                                )
+                                            }
+                                        }
                                     }
                                     saveWorkspace()
                                     status = "Offline • ${modelName ?: "GGUF"} pronto"
                                 } catch (e: Exception) {
-                                    messages[responseIndex] = ChatMessage("OFF.IA", "Erro local: ${e.message ?: e.javaClass.simpleName}")
+                                    messages[responseIndex] = messages[responseIndex].copy(
+                                        text = "Erro local: ${e.message ?: e.javaClass.simpleName}",
+                                    )
                                     saveWorkspace()
                                     status = "Erro no ciclo local"
-                                } finally { busy = false }
+                                } finally {
+                                    busy = false
+                                }
                             }
-                        }
+                        },
                     ) { Text("Enviar") }
                 }
             }
-        }
+        },
     ) { padding ->
         LazyColumn(
             modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
-            contentPadding = PaddingValues(vertical = 12.dp)
+            contentPadding = PaddingValues(vertical = 12.dp),
         ) {
-            items(messages) { message ->
-                Column {
-                    Text(message.role, style = MaterialTheme.typography.labelMedium)
-                    Text(message.text, style = MaterialTheme.typography.bodyLarge)
-                }
+            items(messages, key = { it.id }) { message ->
+                MessageCard(message)
             }
         }
     }
