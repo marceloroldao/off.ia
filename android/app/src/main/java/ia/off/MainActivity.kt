@@ -144,7 +144,6 @@ fun OffiaChatScreen() {
     val sessions = remember { mutableStateListOf<ChatSession>().apply { addAll(initialWorkspace.sessions) } }
     var activeSessionId by remember { mutableStateOf(initialWorkspace.activeSessionId) }
     val messages = remember { mutableStateListOf<ChatMessage>() }
-    var sessionMenuExpanded by remember { mutableStateOf(false) }
 
     fun activeSession(): ChatSession = sessions.firstOrNull { it.id == activeSessionId }
         ?: sessions.first()
@@ -168,6 +167,10 @@ fun OffiaChatScreen() {
     fun saveWorkspace() {
         syncActiveSession()
         chatStore.save(ChatWorkspace(sessions.toMutableList(), activeSessionId))
+    }
+
+    fun resetTransientMemoryStatus(memoryAvailable: Boolean) {
+        // Actual state vars are updated below through the local helper lambdas.
     }
 
     LaunchedEffect(Unit) { loadActiveMessages() }
@@ -194,6 +197,13 @@ fun OffiaChatScreen() {
     var lastTrajectoryUsed by remember { mutableStateOf(false) }
     var lastWindowCount by remember { mutableIntStateOf(0) }
     var pendingMemoryExport by remember { mutableStateOf<String?>(null) }
+
+    fun clearLastMemoryStatus() {
+        lastMemoryStatus = if (memory.available) MemoryStatus.MISS else MemoryStatus.UNAVAILABLE
+        lastMemoryIds = emptyList()
+        lastTrajectoryUsed = false
+        lastWindowCount = 0
+    }
 
     LaunchedEffect(Unit) {
         val savedFile = prefs.getString(PREF_MODEL_PATH, null)?.let(::File)
@@ -261,74 +271,65 @@ fun OffiaChatScreen() {
     Scaffold(
         contentWindowInsets = WindowInsets.safeDrawing,
         topBar = {
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) {
-                Text("OFF.IA", style = MaterialTheme.typography.headlineMedium)
-                Text(status, style = MaterialTheme.typography.bodySmall)
-                modelProbe?.let {
-                    Text("GGUF v${it.version} • ${it.sizeBytes / (1024 * 1024)} MB", style = MaterialTheme.typography.labelSmall)
-                }
-                Spacer(Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Box {
-                        OutlinedButton(enabled = !busy, onClick = { sessionMenuExpanded = true }) {
-                            Text(activeSession().title.take(18))
-                        }
-                        DropdownMenu(expanded = sessionMenuExpanded, onDismissRequest = { sessionMenuExpanded = false }) {
-                            sessions.sortedByDescending { it.updatedAt }.forEach { session ->
-                                DropdownMenuItem(
-                                    text = { Text(session.title) },
-                                    onClick = {
-                                        saveWorkspace()
-                                        activeSessionId = session.id
-                                        loadActiveMessages()
-                                        lastMemoryStatus = if (memory.available) MemoryStatus.MISS else MemoryStatus.UNAVAILABLE
-                                        lastMemoryIds = emptyList()
-                                        lastTrajectoryUsed = false
-                                        lastWindowCount = 0
-                                        sessionMenuExpanded = false
-                                        chatStore.save(ChatWorkspace(sessions.toMutableList(), activeSessionId))
-                                    },
-                                )
-                            }
+            ConversationTopBar(
+                status = status,
+                modelSummary = modelProbe?.let { "GGUF v${it.version} • ${it.sizeBytes / (1024 * 1024)} MB" },
+                activeSession = activeSession(),
+                sessions = sessions,
+                busy = busy,
+                memoryAvailable = memory.available,
+                onSelectSession = { sessionId ->
+                    saveWorkspace()
+                    activeSessionId = sessionId
+                    loadActiveMessages()
+                    clearLastMemoryStatus()
+                    chatStore.save(ChatWorkspace(sessions.toMutableList(), activeSessionId))
+                },
+                onNewConversation = {
+                    saveWorkspace()
+                    val newSession = chatStore.newSession()
+                    sessions += newSession
+                    activeSessionId = newSession.id
+                    messages.clear()
+                    clearLastMemoryStatus()
+                    chatStore.save(ChatWorkspace(sessions.toMutableList(), activeSessionId))
+                },
+                onRenameConversation = { newTitle ->
+                    activeSession().title = newTitle
+                    activeSession().updatedAt = System.currentTimeMillis()
+                    chatStore.save(ChatWorkspace(sessions.toMutableList(), activeSessionId))
+                    status = "Conversa renomeada"
+                },
+                onDeleteConversation = {
+                    val deletingId = activeSessionId
+                    sessions.removeAll { it.id == deletingId }
+                    if (sessions.isEmpty()) sessions += chatStore.newSession()
+                    activeSessionId = sessions.maxByOrNull { it.updatedAt }?.id ?: sessions.first().id
+                    loadActiveMessages()
+                    clearLastMemoryStatus()
+                    chatStore.save(ChatWorkspace(sessions.toMutableList(), activeSessionId))
+                    status = "Conversa excluída"
+                },
+                onChooseModel = { modelPicker.launch(arrayOf("application/octet-stream", "*/*")) },
+                onExportMemory = {
+                    scope.launch {
+                        busy = true
+                        status = "Preparando exportação da Memoria.ia…"
+                        try {
+                            memory.flush()
+                            pendingMemoryExport = collectFullMemorySnapshot(memory)
+                            memoryExportPicker.launch("offia-memoria-${System.currentTimeMillis()}.json")
+                            status = "Exportação pronta para salvar"
+                        } catch (e: Exception) {
+                            pendingMemoryExport = null
+                            status = "Erro ao exportar memória • ${e.message ?: e.javaClass.simpleName}"
+                        } finally {
+                            busy = false
                         }
                     }
-                    OutlinedButton(enabled = !busy, onClick = {
-                        saveWorkspace()
-                        val newSession = chatStore.newSession()
-                        sessions += newSession
-                        activeSessionId = newSession.id
-                        messages.clear()
-                        lastMemoryStatus = if (memory.available) MemoryStatus.MISS else MemoryStatus.UNAVAILABLE
-                        lastMemoryIds = emptyList()
-                        lastTrajectoryUsed = false
-                        lastWindowCount = 0
-                        chatStore.save(ChatWorkspace(sessions.toMutableList(), activeSessionId))
-                    }) { Text("Nova") }
-                    OutlinedButton(enabled = !busy, onClick = { modelPicker.launch(arrayOf("application/octet-stream", "*/*")) }) {
-                        Text(if (modelName == null) "Modelo" else "Trocar")
-                    }
-                }
-                TextButton(
-                    enabled = memory.available && !busy,
-                    onClick = {
-                        scope.launch {
-                            busy = true
-                            status = "Preparando exportação da Memoria.ia…"
-                            try {
-                                memory.flush()
-                                pendingMemoryExport = collectFullMemorySnapshot(memory)
-                                memoryExportPicker.launch("offia-memoria-${System.currentTimeMillis()}.json")
-                                status = "Exportação pronta para salvar"
-                            } catch (e: Exception) {
-                                pendingMemoryExport = null
-                                status = "Erro ao exportar memória • ${e.message ?: e.javaClass.simpleName}"
-                            } finally {
-                                busy = false
-                            }
-                        }
-                    },
-                ) { Text("Exportar Memoria.ia") }
-            }
+                },
+                onCopiedConversation = { status = "Conversa copiada" },
+            )
         },
         bottomBar = {
             Column(
