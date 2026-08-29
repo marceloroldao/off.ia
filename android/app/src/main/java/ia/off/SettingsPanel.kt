@@ -49,6 +49,8 @@ fun SettingsPanel(
     var installedModels by remember { mutableStateOf(modelManager.installedModels()) }
     var deleteCandidate by remember { mutableStateOf<InstalledModel?>(null) }
     val defaultModel = ModelCatalog.defaultModel
+    val downloadActive = modelDownloadState is ModelDownloadState.Downloading ||
+        modelDownloadState is ModelDownloadState.Verifying
 
     LaunchedEffect(modelDownloadState) {
         if (modelDownloadState is ModelDownloadState.Ready) {
@@ -99,14 +101,14 @@ fun SettingsPanel(
                     onCancel = onCancelModelDownload,
                 )
 
-                if (modelDownloadState !is ModelDownloadState.Downloading &&
-                    modelDownloadState !is ModelDownloadState.Verifying
-                ) {
+                if (!downloadActive) {
                     OutlinedButton(onClick = onDownloadDefaultModel) {
                         Text("Baixar modelo padrão")
                     }
                 }
-                OutlinedButton(onClick = onChooseModel) { Text("Escolher / importar outro GGUF") }
+                OutlinedButton(enabled = !downloadActive, onClick = onChooseModel) {
+                    Text("Escolher / importar outro GGUF")
+                }
             }
 
             SettingsSection("Memoria.ia") {
@@ -114,7 +116,7 @@ fun SettingsPanel(
                     if (memoryAvailable) "Ativa • armazenamento local" else "Indisponível",
                     style = MaterialTheme.typography.bodyMedium,
                 )
-                OutlinedButton(enabled = memoryAvailable, onClick = onExportMemory) {
+                OutlinedButton(enabled = memoryAvailable && !downloadActive, onClick = onExportMemory) {
                     Text("Exportar diagnóstico")
                 }
             }
