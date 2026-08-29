@@ -47,6 +47,8 @@ fun ConversationTopBar(
 ) {
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
+    val downloadActive = modelDownloadState is ModelDownloadState.Downloading ||
+        modelDownloadState is ModelDownloadState.Verifying
     var sessionMenuExpanded by remember { mutableStateOf(false) }
     var actionsExpanded by remember { mutableStateOf(false) }
     var renameDialogVisible by remember { mutableStateOf(false) }
@@ -81,9 +83,10 @@ fun ConversationTopBar(
             OutlinedButton(enabled = !busy, onClick = onNewConversation) { Text("Nova") }
 
             Box {
-                OutlinedButton(enabled = !busy, onClick = { actionsExpanded = true }) { Text("⋮") }
+                OutlinedButton(enabled = !busy || downloadActive, onClick = { actionsExpanded = true }) { Text("⋮") }
                 DropdownMenu(expanded = actionsExpanded, onDismissRequest = { actionsExpanded = false }) {
                     DropdownMenuItem(
+                        enabled = !busy,
                         text = { Text("Renomear conversa") },
                         onClick = {
                             actionsExpanded = false
@@ -92,6 +95,7 @@ fun ConversationTopBar(
                         },
                     )
                     DropdownMenuItem(
+                        enabled = !busy,
                         text = { Text("Copiar conversa") },
                         onClick = {
                             actionsExpanded = false
@@ -100,6 +104,7 @@ fun ConversationTopBar(
                         },
                     )
                     DropdownMenuItem(
+                        enabled = !busy,
                         text = { Text("Compartilhar conversa") },
                         onClick = {
                             actionsExpanded = false
@@ -111,6 +116,7 @@ fun ConversationTopBar(
                         },
                     )
                     DropdownMenuItem(
+                        enabled = !busy,
                         text = { Text("Excluir conversa") },
                         onClick = {
                             actionsExpanded = false
@@ -132,8 +138,14 @@ fun ConversationTopBar(
             }
         }
 
-        TextButton(enabled = memoryAvailable && !busy, onClick = onExportMemory) {
-            Text("Exportar Memoria.ia")
+        if (downloadActive) {
+            TextButton(onClick = onCancelModelDownload) {
+                Text("Cancelar download")
+            }
+        } else {
+            TextButton(enabled = memoryAvailable && !busy, onClick = onExportMemory) {
+                Text("Exportar Memoria.ia")
+            }
         }
     }
 
