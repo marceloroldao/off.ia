@@ -42,7 +42,6 @@ class ChatStore(context: Context) {
     fun load(): ChatWorkspace {
         if (file.isFile) {
             runCatching { parseWorkspace(file.readText(Charsets.UTF_8)) }.getOrNull()?.let { workspace ->
-                // Rewrite schema-v2 workspaces as v3 after successful migration.
                 runCatching { save(workspace) }
                 return workspace
             }
@@ -114,6 +113,7 @@ class ChatStore(context: Context) {
             put("memory", JSONObject().apply {
                 put("status", memory.status.name)
                 put("memory_ids", JSONArray(memory.memoryIds))
+                put("learned_memory_ids", JSONArray(memory.learnedMemoryIds))
                 memory.confidence?.let { put("confidence", it) }
                 put("selected_context", memory.selectedContext)
                 put("trajectory_used", memory.trajectoryUsed)
@@ -167,18 +167,15 @@ class ChatStore(context: Context) {
         val memory = memoryJson?.let { item ->
             val status = runCatching { MemoryStatus.valueOf(item.optString("status")) }.getOrNull()
                 ?: MemoryStatus.UNAVAILABLE
-            val idsJson = item.optJSONArray("memory_ids") ?: JSONArray()
-            val ids = buildList {
-                for (index in 0 until idsJson.length()) {
-                    idsJson.optString(index).takeIf { it.isNotBlank() }?.let(::add)
-                }
-            }
+            val ids = jsonStringList(item.optJSONArray("memory_ids"))
+            val learnedIds = jsonStringList(item.optJSONArray("learned_memory_ids"))
             val confidence = if (item.has("confidence") && !item.isNull("confidence")) {
                 item.optDouble("confidence").takeUnless { it.isNaN() }
             } else null
             ResponseMemoryMetadata(
                 status = status,
                 memoryIds = ids,
+                learnedMemoryIds = learnedIds,
                 confidence = confidence,
                 selectedContext = item.optString("selected_context"),
                 trajectoryUsed = item.optBoolean("trajectory_used", false),
@@ -205,6 +202,13 @@ class ChatStore(context: Context) {
             memory = memory,
             generation = generation,
         )
+    }
+
+    private fun jsonStringList(array: JSONArray?): List<String> = buildList {
+        if (array == null) return@buildList
+        for (index in 0 until array.length()) {
+            array.optString(index).takeIf { it.isNotBlank() }?.let(::add)
+        }
     }
 
     private fun migrateLegacy(): ChatWorkspace? {
