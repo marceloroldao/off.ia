@@ -12,6 +12,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -19,6 +20,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -33,7 +35,10 @@ import androidx.compose.ui.unit.dp
 fun SettingsPanel(
     modelSummary: String?,
     memoryAvailable: Boolean,
+    modelDownloadState: ModelDownloadState,
     onChooseModel: () -> Unit,
+    onDownloadDefaultModel: () -> Unit,
+    onCancelModelDownload: () -> Unit,
     onExportMemory: () -> Unit,
     onDismiss: () -> Unit,
 ) {
@@ -43,6 +48,13 @@ fun SettingsPanel(
     var settings by remember { mutableStateOf(store.load()) }
     var installedModels by remember { mutableStateOf(modelManager.installedModels()) }
     var deleteCandidate by remember { mutableStateOf<InstalledModel?>(null) }
+    val defaultModel = ModelCatalog.defaultModel
+
+    LaunchedEffect(modelDownloadState) {
+        if (modelDownloadState is ModelDownloadState.Ready) {
+            installedModels = modelManager.installedModels()
+        }
+    }
 
     fun update(next: AppSettings) {
         settings = next
@@ -59,7 +71,7 @@ fun SettingsPanel(
         ) {
             Text("Configurações", style = MaterialTheme.typography.headlineSmall)
             Text(
-                "O chat, a Memoria.ia, o BDR e a inferência continuam locais. Recursos de rede ainda não estão habilitados neste build.",
+                "Inferência, Memoria.ia e BDR continuam locais. A Internet é usada somente por recursos online explícitos, como download de modelos, Curiosidade e Melhorar.",
                 style = MaterialTheme.typography.bodySmall,
             )
 
@@ -75,11 +87,26 @@ fun SettingsPanel(
                         onDelete = { deleteCandidate = model },
                     )
                 }
-                OutlinedButton(onClick = onChooseModel) { Text("Escolher / importar GGUF") }
+
+                Text("Modelo padrão", style = MaterialTheme.typography.titleSmall)
+                Text(defaultModel.displayName, style = MaterialTheme.typography.bodyMedium)
                 Text(
-                    "Download automático será adicionado pelo Model Download Manager; este build ainda não possui acesso à Internet.",
+                    "${defaultModel.expectedSizeBytes?.formatStorageSize() ?: "tamanho desconhecido"} • ${defaultModel.licenseName}",
                     style = MaterialTheme.typography.bodySmall,
                 )
+                ModelDownloadStatus(
+                    state = modelDownloadState,
+                    onCancel = onCancelModelDownload,
+                )
+
+                if (modelDownloadState !is ModelDownloadState.Downloading &&
+                    modelDownloadState !is ModelDownloadState.Verifying
+                ) {
+                    OutlinedButton(onClick = onDownloadDefaultModel) {
+                        Text("Baixar modelo padrão")
+                    }
+                }
+                OutlinedButton(onClick = onChooseModel) { Text("Escolher / importar outro GGUF") }
             }
 
             SettingsSection("Memoria.ia") {
@@ -94,14 +121,20 @@ fun SettingsPanel(
 
             SettingsSection("Modelos e rede") {
                 SettingsSwitch(
-                    title = "Baixar modelos grandes somente no Wi-Fi",
-                    subtitle = "Será aplicado quando o gerenciador de download online for habilitado.",
+                    title = "Baixar modelo padrão automaticamente",
+                    subtitle = "Quando não houver modelo local, OFF.IA tenta baixar e carregar o modelo padrão ao iniciar.",
+                    checked = settings.autoDownloadDefaultModel,
+                    onCheckedChange = { update(settings.copy(autoDownloadDefaultModel = it)) },
+                )
+                SettingsSwitch(
+                    title = "Baixar modelos somente no Wi-Fi",
+                    subtitle = "Quando ativado, o download automático aguarda uma conexão Wi-Fi válida.",
                     checked = settings.wifiOnlyModelDownloads,
                     onCheckedChange = { update(settings.copy(wifiOnlyModelDownloads = it)) },
                 )
                 SettingsSwitch(
                     title = "Bloquear rede depois de baixar o modelo",
-                    subtitle = "Preferência preparada para manter o uso cotidiano estritamente local.",
+                    subtitle = "Preferência reservada para impedir Curiosidade e provedores externos após o onboarding.",
                     checked = settings.blockNetworkAfterModelDownload,
                     onCheckedChange = { update(settings.copy(blockNetworkAfterModelDownload = it)) },
                 )
@@ -114,7 +147,7 @@ fun SettingsPanel(
                     checked = settings.confirmBeforeCloud,
                     onCheckedChange = { update(settings.copy(confirmBeforeCloud = it)) },
                 )
-                Text("Internet: desativada neste build", style = MaterialTheme.typography.labelMedium)
+                Text("Internet: permitida somente para recursos online", style = MaterialTheme.typography.labelMedium)
                 Text("Inferência: llama.cpp local", style = MaterialTheme.typography.labelMedium)
                 Text("Memória: Memoria.ia + BDR local", style = MaterialTheme.typography.labelMedium)
             }
@@ -153,6 +186,38 @@ fun SettingsPanel(
                 TextButton(onClick = { deleteCandidate = null }) { Text("Cancelar") }
             },
         )
+    }
+}
+
+@Composable
+private fun ModelDownloadStatus(
+    state: ModelDownloadState,
+    onCancel: () -> Unit,
+) {
+    when (state) {
+        ModelDownloadState.Idle -> Unit
+        is ModelDownloadState.Downloading -> {
+            val total = state.totalBytes
+            if (total != null && total > 0L) {
+                val progress = (state.bytesDownloaded.toFloat() / total.toFloat()).coerceIn(0f, 1f)
+                LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
+                Text(
+                    "Baixando ${state.bytesDownloaded.formatStorageSize()} / ${total.formatStorageSize()} • ${(progress * 100).toInt()}%",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            } else {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                Text("Baixando ${state.bytesDownloaded.formatStorageSize()}", style = MaterialTheme.typography.bodySmall)
+            }
+            TextButton(onClick = onCancel) { Text("Cancelar download") }
+        }
+        ModelDownloadState.Verifying -> {
+            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+            Text("Verificando SHA-256…", style = MaterialTheme.typography.bodySmall)
+        }
+        is ModelDownloadState.Ready -> Text("Modelo baixado e validado", style = MaterialTheme.typography.bodySmall)
+        is ModelDownloadState.Failed -> Text("Falha: ${state.message}", style = MaterialTheme.typography.bodySmall)
+        ModelDownloadState.Cancelled -> Text("Download cancelado", style = MaterialTheme.typography.bodySmall)
     }
 }
 
