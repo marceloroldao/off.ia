@@ -1,5 +1,7 @@
 package ia.off
 
+import android.content.Intent
+import android.net.Uri
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -40,7 +42,10 @@ fun MessageCard(
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
     val isUser = message.role == "Você"
+    val isCuriosity = message.generation?.source == ResponseSource.CURIOSITY
+    val publicSources = message.generation?.publicSources.orEmpty()
     var memoryExpanded by remember(message.id) { mutableStateOf(false) }
+    var sourcesExpanded by remember(message.id) { mutableStateOf(false) }
     var moreExpanded by remember(message.id) { mutableStateOf(false) }
 
     Row(
@@ -52,7 +57,11 @@ fun MessageCard(
             horizontalAlignment = if (isUser) Alignment.End else Alignment.Start,
         ) {
             Text(
-                text = if (isUser) "Você" else "OFF.IA",
+                text = when {
+                    isUser -> "Você"
+                    isCuriosity -> "OFF.IA • Curiosidade"
+                    else -> "OFF.IA"
+                },
                 style = MaterialTheme.typography.labelMedium,
             )
             Surface(
@@ -76,8 +85,13 @@ fun MessageCard(
                     TextButton(onClick = { memoryExpanded = !memoryExpanded }) {
                         Text(if (memoryExpanded) "Ocultar memória" else "Memória")
                     }
+                    if (publicSources.isNotEmpty()) {
+                        TextButton(onClick = { sourcesExpanded = !sourcesExpanded }) {
+                            Text(if (sourcesExpanded) "Ocultar fontes" else "Fontes (${publicSources.size})")
+                        }
+                    }
                     TextButton(
-                        enabled = onCuriosity != null && !busy,
+                        enabled = onCuriosity != null && !busy && !isCuriosity,
                         onClick = { onCuriosity?.invoke(message.id) },
                     ) { Text("Curiosidade") }
                     TextButton(
@@ -85,7 +99,7 @@ fun MessageCard(
                         onClick = { onImprove?.invoke(message.id) },
                     ) { Text("Melhorar") }
                     TextButton(
-                        enabled = onRegenerate != null && !busy,
+                        enabled = onRegenerate != null && !busy && !isCuriosity,
                         onClick = { onRegenerate?.invoke(message.id) },
                     ) { Text("Regenerar") }
                     Box {
@@ -100,8 +114,8 @@ fun MessageCard(
                                     moreExpanded = false
                                     sharePlainText(
                                         context = context.applicationContext,
-                                        subject = "Resposta do OFF.IA",
-                                        text = message.text,
+                                        subject = if (isCuriosity) "Curiosidade do OFF.IA" else "Resposta do OFF.IA",
+                                        text = message.toShareText(),
                                     )
                                 },
                             )
@@ -109,7 +123,7 @@ fun MessageCard(
                                 text = { Text("Copiar resposta") },
                                 onClick = {
                                     moreExpanded = false
-                                    clipboard.setText(AnnotatedString(message.text))
+                                    clipboard.setText(AnnotatedString(message.toShareText()))
                                 },
                             )
                         }
@@ -119,6 +133,61 @@ fun MessageCard(
 
             if (!isUser && memoryExpanded) {
                 ResponseMemoryPanel(message.memory)
+            }
+            if (!isUser && sourcesExpanded && publicSources.isNotEmpty()) {
+                PublicSourcesPanel(
+                    sources = publicSources,
+                    onOpen = { source ->
+                        runCatching {
+                            context.startActivity(
+                                Intent(Intent.ACTION_VIEW, Uri.parse(source.url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                            )
+                        }
+                    },
+                )
+            }
+        }
+    }
+}
+
+private fun ChatMessage.toShareText(): String = buildString {
+    append(text)
+    val sources = generation?.publicSources.orEmpty()
+    if (sources.isNotEmpty()) {
+        append("\n\nFontes:\n")
+        sources.forEachIndexed { index, source ->
+            append("${index + 1}. ${source.title} — ${source.url}\n")
+        }
+    }
+}.trim()
+
+@Composable
+private fun PublicSourcesPanel(
+    sources: List<CuriositySource>,
+    onOpen: (CuriositySource) -> Unit,
+) {
+    Surface(
+        tonalElevation = 2.dp,
+        shape = MaterialTheme.shapes.medium,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text("Fontes públicas", style = MaterialTheme.typography.titleSmall)
+            Text(
+                "Estas fontes pertencem à resposta de Curiosidade e não foram gravadas automaticamente como memória pessoal.",
+                style = MaterialTheme.typography.bodySmall,
+            )
+            sources.forEachIndexed { index, source ->
+                if (index > 0) HorizontalDivider()
+                Text("${index + 1}. ${source.title}", style = MaterialTheme.typography.bodyMedium)
+                Text(source.domain, style = MaterialTheme.typography.labelSmall)
+                source.excerpt?.takeIf { it.isNotBlank() }?.let {
+                    Text(it.take(320), style = MaterialTheme.typography.bodySmall)
+                }
+                TextButton(onClick = { onOpen(source) }) { Text("Abrir fonte") }
             }
         }
     }
