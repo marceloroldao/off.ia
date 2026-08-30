@@ -1,0 +1,49 @@
+name: model-smoke
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/android-mvp
+    paths:
+      - '.github/workflows/model-smoke.yml'
+
+jobs:
+  smollm2-q3kl:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout OFF.IA
+        uses: actions/checkout@v6
+
+      - name: Fetch pinned llama.cpp
+        shell: bash
+        run: |
+          git clone --filter=blob:none https://github.com/ggml-org/llama.cpp llama.cpp
+          git -C llama.cpp checkout --detach ca3d5a3e10d53f7ea672cb9b6178faca3e2807bc
+
+      - name: Build llama.cpp completion tool
+        shell: bash
+        run: |
+          cmake -S llama.cpp -B llama-build -DGGML_NATIVE=OFF -DLLAMA_CURL=OFF -DCMAKE_BUILD_TYPE=Release
+          cmake --build llama-build --target llama-completion --parallel 2
+
+      - name: Download SmolLM2 135M Q3_K_L GGUF
+        shell: bash
+        run: |
+          curl -L --fail --retry 5 --retry-all-errors --retry-delay 5 \
+            -A 'OFF.IA-model-smoke/1.0' \
+            -o smollm2-q3_k_l.gguf \
+            'https://huggingface.co/lmstudio-community/SmolLM2-135M-Instruct-GGUF/resolve/main/SmolLM2-135M-Instruct-Q3_K_L.gguf?download=true'
+          test "$(head -c 4 smollm2-q3_k_l.gguf)" = "GGUF"
+          test "$(stat -c%s smollm2-q3_k_l.gguf)" -gt 90000000
+          ls -lh smollm2-q3_k_l.gguf
+
+      - name: Load model and generate one token
+        shell: bash
+        run: |
+          timeout 120 ./llama-build/bin/llama-completion \
+            -m smollm2-q3_k_l.gguf \
+            -p 'Hello' \
+            -n 1 \
+            --no-display-prompt

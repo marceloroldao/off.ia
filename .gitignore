@@ -5,3 +5,4 @@ __pycache__/
 models/*.gguf
 data/
 *.log
+android/offia-alpha.jks
