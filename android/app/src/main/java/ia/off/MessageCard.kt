@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -22,6 +23,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -29,6 +31,7 @@ import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
 
 @Composable
 fun MessageCard(
@@ -41,6 +44,10 @@ fun MessageCard(
 ) {
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
+    val appContext = context.applicationContext
+    val scope = rememberCoroutineScope()
+    val chatStore = remember { ChatStore(appContext) }
+    val settingsStore = remember { AppSettingsStore(appContext) }
     val isUser = message.role == "Você"
     val responseSource = message.generation?.source
     val isLocal = responseSource == ResponseSource.LOCAL
@@ -49,9 +56,87 @@ fun MessageCard(
         responseSource == ResponseSource.GEMINI ||
         responseSource == ResponseSource.MA2A
     val publicSources = message.generation?.publicSources.orEmpty()
+    var improvements by remember(message.id) { mutableStateOf(message.improvements) }
+    var improving by remember(message.id) { mutableStateOf(false) }
+    var improveError by remember(message.id) { mutableStateOf<String?>(null) }
+    var pendingConfirmation by remember(message.id) { mutableStateOf<ImproveProviderKind?>(null) }
     var memoryExpanded by remember(message.id) { mutableStateOf(false) }
     var sourcesExpanded by remember(message.id) { mutableStateOf(false) }
     var moreExpanded by remember(message.id) { mutableStateOf(false) }
+
+    fun executeConfiguredImprove() {
+        if (!isLocal || improving || busy) return
+        val settings = settingsStore.load()
+        val selection = configuredImproveProvider(appContext, settings)
+        val provider = selection.provider
+        if (!selection.configured || provider == null) {
+            improveError = selection.reason ?: "Configure um provedor em Configurações"
+            return
+        }
+
+        if (selection.kind == ImproveProviderKind.OPENAI || selection.kind == ImproveProviderKind.GEMINI) {
+            val network = currentNetworkState(appContext)
+            if (!network.connected || !network.validated) {
+                improveError = "Sem conexão com Internet validada"
+                return
+            }
+        }
+
+        val interaction = chatStore.findInteraction(message.id)
+        if (interaction == null) {
+            improveError = "Não foi possível localizar a pergunta original desta resposta"
+            return
+        }
+
+        scope.launch {
+            improving = true
+            improveError = null
+            try {
+                val startedAt = System.currentTimeMillis()
+                val result = provider.improve(
+                    ImproveRequest(
+                        userQuestion = interaction.userQuestion,
+                        localAnswer = message.text,
+                        selectedMemoryContext = message.memory?.selectedContext?.takeIf { it.isNotBlank() },
+                    ),
+                )
+                val record = ImprovementRecord(
+                    provider = result.provider,
+                    text = result.text,
+                    modelOrRoute = result.modelOrRoute,
+                    latencyMs = System.currentTimeMillis() - startedAt,
+                )
+                improvements = (improvements + record).takeLast(5)
+                if (!chatStore.appendImprovement(message.id, record)) {
+                    improveError = "Resposta melhorada gerada, mas não foi possível persistir a alternativa"
+                }
+            } catch (e: Exception) {
+                improveError = e.message ?: e.javaClass.simpleName
+            } finally {
+                improving = false
+            }
+        }
+    }
+
+    fun requestImprove() {
+        if (onImprove != null) {
+            onImprove(message.id)
+            return
+        }
+        val settings = settingsStore.load()
+        val selection = configuredImproveProvider(appContext, settings)
+        if (!selection.configured || selection.provider == null) {
+            improveError = selection.reason ?: "Configure um provedor em Configurações"
+            return
+        }
+        if (settings.confirmBeforeCloud &&
+            (selection.kind == ImproveProviderKind.OPENAI || selection.kind == ImproveProviderKind.GEMINI)
+        ) {
+            pendingConfirmation = selection.kind
+        } else {
+            executeConfiguredImprove()
+        }
+    }
 
     Row(
         modifier = modifier.fillMaxWidth(),
@@ -112,9 +197,9 @@ fun MessageCard(
                         onClick = { onCuriosity?.invoke(message.id) },
                     ) { Text("Curiosidade") }
                     TextButton(
-                        enabled = onImprove != null && !busy && isLocal,
-                        onClick = { onImprove?.invoke(message.id) },
-                    ) { Text("Melhorar") }
+                        enabled = !busy && !improving && isLocal,
+                        onClick = { requestImprove() },
+                    ) { Text(if (improving) "Melhorando…" else "Melhorar") }
                     TextButton(
                         enabled = onRegenerate != null && !busy && isLocal,
                         onClick = { onRegenerate?.invoke(message.id) },
@@ -130,7 +215,7 @@ fun MessageCard(
                                 onClick = {
                                     moreExpanded = false
                                     sharePlainText(
-                                        context = context.applicationContext,
+                                        context = appContext,
                                         subject = when {
                                             isCuriosity -> "Curiosidade do OFF.IA"
                                             isImproved -> "Resposta melhorada do OFF.IA"
@@ -152,6 +237,10 @@ fun MessageCard(
                 }
             }
 
+            improveError?.let { error ->
+                Text(error, style = MaterialTheme.typography.bodySmall)
+            }
+
             if (!isUser && memoryExpanded) {
                 ResponseMemoryPanel(message.memory)
             }
@@ -167,7 +256,41 @@ fun MessageCard(
                     },
                 )
             }
+            improvements.forEach { improvement ->
+                ImprovementPanel(
+                    improvement = improvement,
+                    onCopy = { clipboard.setText(AnnotatedString(improvement.text)) },
+                    onShare = {
+                        sharePlainText(
+                            context = appContext,
+                            subject = "Resposta melhorada do OFF.IA • ${improvement.provider.displayName()}",
+                            text = improvement.text,
+                        )
+                    },
+                )
+            }
         }
+    }
+
+    pendingConfirmation?.let { kind ->
+        AlertDialog(
+            onDismissRequest = { pendingConfirmation = null },
+            title = { Text("Enviar para ${kind.displayName()}?") },
+            text = {
+                Text(
+                    "Será enviada a pergunta original, a resposta local e somente o contexto selecionado pela Memoria.ia para esta resposta. A base de memória completa e as chaves locais não são enviadas.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    pendingConfirmation = null
+                    executeConfiguredImprove()
+                }) { Text("Enviar e melhorar") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingConfirmation = null }) { Text("Cancelar") }
+            },
+        )
     }
 }
 
@@ -181,6 +304,40 @@ private fun ChatMessage.toShareText(): String = buildString {
         }
     }
 }.trim()
+
+@Composable
+private fun ImprovementPanel(
+    improvement: ImprovementRecord,
+    onCopy: () -> Unit,
+    onShare: () -> Unit,
+) {
+    Surface(
+        tonalElevation = 3.dp,
+        shape = MaterialTheme.shapes.medium,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text(
+                "Melhorada • ${improvement.provider.displayName()}",
+                style = MaterialTheme.typography.titleSmall,
+            )
+            improvement.modelOrRoute?.let { model ->
+                Text(model, style = MaterialTheme.typography.labelSmall)
+            }
+            improvement.latencyMs?.let { latency ->
+                Text("${latency} ms", style = MaterialTheme.typography.labelSmall)
+            }
+            RichMessageContent(text = improvement.text)
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                TextButton(onClick = onCopy) { Text("Copiar") }
+                TextButton(onClick = onShare) { Text("Compartilhar") }
+            }
+        }
+    }
+}
 
 @Composable
 private fun PublicSourcesPanel(
