@@ -33,8 +33,8 @@ data class ChatInteraction(
  */
 class ChatStore(context: Context) {
     companion object {
-        private const val SCHEMA_VERSION = 3
-        private const val PREVIOUS_SCHEMA_VERSION = 2
+        private const val SCHEMA_VERSION = 4
+        private val READABLE_SCHEMA_VERSIONS = setOf(2, 3, SCHEMA_VERSION)
         private const val FILE_NAME = "chat-workspace-v2.json"
         private const val LEGACY_FILE_NAME = "chat-history-v1.json"
         private const val MAX_MESSAGES_PER_SESSION = 2000
@@ -111,6 +111,7 @@ class ChatStore(context: Context) {
 
     @Synchronized
     fun save(workspace: ChatWorkspace) {
+        mergeTransientCuriosityAudits(workspace)
         mergeStoredImprovements(workspace)
 
         val keptSessions = workspace.sessions
@@ -144,6 +145,22 @@ class ChatStore(context: Context) {
             put("sessions", sessionsArray)
         }
         atomicWrite(root.toString())
+    }
+
+    private fun mergeTransientCuriosityAudits(workspace: ChatWorkspace) {
+        workspace.sessions.forEach { session ->
+            session.messages.indices.forEach { index ->
+                val message = session.messages[index]
+                val generation = message.generation ?: return@forEach
+                if (generation.source != ResponseSource.CURIOSITY) return@forEach
+                val pending = CuriosityPublicAuditBridge.take(message.id) ?: return@forEach
+                if (generation.publicKnowledge == null) {
+                    session.messages[index] = message.copy(
+                        generation = generation.copy(publicKnowledge = pending),
+                    )
+                }
+            }
+        }
     }
 
     private fun mergeStoredImprovements(workspace: ChatWorkspace) {
@@ -216,6 +233,16 @@ class ChatStore(context: Context) {
                         }
                     })
                 }
+                generation.publicKnowledge?.let { audit ->
+                    put("public_knowledge", JSONObject().apply {
+                        put("knowledge_class", audit.knowledgeClass)
+                        put("source_memory_ids", JSONArray(audit.sourceMemoryIds))
+                        put("stored_memory_ids", JSONArray(audit.storedMemoryIds))
+                        put("synthesis_stored", audit.synthesisStored)
+                        put("failed_source_count", audit.failedSourceCount)
+                        put("flush_failed", audit.flushFailed)
+                    })
+                }
             })
         }
 
@@ -237,7 +264,7 @@ class ChatStore(context: Context) {
     private fun parseWorkspace(text: String): ChatWorkspace {
         val root = JSONObject(text)
         val schemaVersion = root.optInt("schema_version", -1)
-        require(schemaVersion == SCHEMA_VERSION || schemaVersion == PREVIOUS_SCHEMA_VERSION)
+        require(schemaVersion in READABLE_SCHEMA_VERSIONS)
 
         val sessionsJson = root.optJSONArray("sessions") ?: JSONArray()
         val sessions = mutableListOf<ChatSession>()
@@ -309,11 +336,24 @@ class ChatStore(context: Context) {
                     )
                 }
             }
+            val publicKnowledge = item.optJSONObject("public_knowledge")?.let { audit ->
+                PublicKnowledgeAudit(
+                    knowledgeClass = audit.optString("knowledge_class")
+                        .takeIf { it == "external_public" }
+                        ?: "external_public",
+                    sourceMemoryIds = jsonStringList(audit.optJSONArray("source_memory_ids")).distinct(),
+                    storedMemoryIds = jsonStringList(audit.optJSONArray("stored_memory_ids")).distinct(),
+                    synthesisStored = audit.optBoolean("synthesis_stored", false),
+                    failedSourceCount = audit.optInt("failed_source_count", 0).coerceAtLeast(0),
+                    flushFailed = audit.optBoolean("flush_failed", false),
+                )
+            }
             GenerationMetadata(
                 source = source,
                 modelName = item.optString("model_name").takeIf { it.isNotBlank() },
                 latencyMs = if (item.has("latency_ms") && !item.isNull("latency_ms")) item.optLong("latency_ms") else null,
                 publicSources = publicSources,
+                publicKnowledge = publicKnowledge,
             )
         }
 

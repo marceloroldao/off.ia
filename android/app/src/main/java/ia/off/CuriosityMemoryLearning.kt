@@ -1,6 +1,7 @@
 package ia.off
 
 import java.time.Instant
+import java.util.concurrent.ConcurrentHashMap
 
 data class CuriosityMemoryLearningReport(
     val sourceMemoryIds: List<String> = emptyList(),
@@ -11,6 +12,33 @@ data class CuriosityMemoryLearningReport(
 ) {
     val learned: Boolean
         get() = storedMemoryIds.isNotEmpty()
+
+    fun toPublicKnowledgeAudit() = PublicKnowledgeAudit(
+        sourceMemoryIds = sourceMemoryIds,
+        storedMemoryIds = storedMemoryIds,
+        synthesisStored = synthesisStored,
+        failedSourceCount = failedSourceCount,
+        flushFailed = flushFailed,
+    )
+}
+
+/**
+ * Process-local handoff between Curiosity learning and the durable chat transcript.
+ *
+ * This is deliberately not a memory store. Memoria.ia + BDR remain authoritative.
+ * The bridge only lets the immediately following ChatStore.save() attach the
+ * already-returned public-learning audit to the matching Curiosity response.
+ */
+internal object CuriosityPublicAuditBridge {
+    private val pending = ConcurrentHashMap<String, PublicKnowledgeAudit>()
+
+    fun record(responseId: String, audit: PublicKnowledgeAudit) {
+        if (responseId.isNotBlank()) pending[responseId] = audit
+    }
+
+    fun take(responseId: String): PublicKnowledgeAudit? = pending.remove(responseId)
+
+    fun clearForTests() = pending.clear()
 }
 
 suspend fun learnCuriosityResult(
@@ -97,11 +125,13 @@ suspend fun learnCuriosityResult(
         }
     }
 
-    return CuriosityMemoryLearningReport(
+    val report = CuriosityMemoryLearningReport(
         sourceMemoryIds = sourceIds.toList(),
         storedMemoryIds = storedIds.toList(),
         failedSourceCount = failedSources,
         synthesisStored = synthesisStored,
         flushFailed = flushFailed,
     )
+    CuriosityPublicAuditBridge.record(requestId, report.toPublicKnowledgeAudit())
+    return report
 }

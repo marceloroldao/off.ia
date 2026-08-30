@@ -57,12 +57,38 @@ Public Web material is never persisted as if the user asserted it.
 
 The Android app contains no BDR-specific persistence code for Curiosity.
 
+## Per-response public-learning audit
+
+OFF.IA keeps a small transcript-level audit snapshot for each completed Curiosity response. This snapshot is **not** a second memory database and is not authoritative for semantic retrieval. Its only purpose is to make the consumer behavior auditable after app restart without reading raw BDR files.
+
+The snapshot records:
+
+- knowledge class (`external_public`);
+- public source memory IDs returned by Memoria.ia;
+- total public memory IDs learned for the Curiosity response;
+- whether the local synthesis was accepted as derived public knowledge;
+- number of rejected/failed source submissions;
+- whether the final explicit flush reported a failure.
+
+The handoff between `learnCuriosityResult(...)` and `ChatStore.save(...)` is process-local and transient. `ChatStore` immediately attaches the returned audit to the matching response ID and persists it in the chat workspace schema. Memoria.ia + BDR remain the only authoritative memory/persistence path.
+
+The chat workspace schema is additive and reads historical schema versions 2 and 3 while writing schema version 4 with the optional `generation.public_knowledge` block.
+
 ## Validation
 
 The consumer integration is gated by:
 
-- Kotlin unit coverage for source-first learning, derived parent lineage and flush-failure isolation;
+- Kotlin unit coverage for source-first learning, derived parent lineage, blank-synthesis handling, audit handoff and flush-failure isolation;
 - Android arm64-v8a build/link against the pinned Memoria.ia post-v1 runtime;
 - existing Memoria.ia native tests for persistence, restart, provenance, deduplication, conflict handling and offline resolution.
 
-A real-device kill/restart + airplane-mode Curiosity recall remains the final consumer acceptance proof after CI integration succeeds.
+A real-device Curiosity acceptance remains the final consumer proof tracked in OFF.IA issue #11:
+
+```text
+Curiosity online
+  -> external_public learning
+  -> force-stop/reopen
+  -> airplane mode
+  -> normal Memoria.ia resolve
+  -> local llama.cpp answer
+```

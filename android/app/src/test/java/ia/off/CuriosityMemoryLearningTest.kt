@@ -3,12 +3,14 @@ package ia.off
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CuriosityMemoryLearningTest {
     @Test
     fun storesPublicSourcesBeforeDerivedSynthesis() = runBlocking {
+        CuriosityPublicAuditBridge.clearForTests()
         val memory = RecordingMemoryGateway()
         val result = CuriosityResult(
             sourceText = "public material",
@@ -47,10 +49,19 @@ class CuriosityMemoryLearningTest {
         assertTrue(report.synthesisStored)
         assertEquals(listOf("memory-1", "memory-2"), report.sourceMemoryIds)
         assertEquals(listOf("memory-1", "memory-2", "memory-3"), report.storedMemoryIds)
+
+        val audit = CuriosityPublicAuditBridge.take("curiosity-1")
+        assertEquals(report.toPublicKnowledgeAudit(), audit)
+        assertEquals("external_public", audit?.knowledgeClass)
+        assertEquals(report.sourceMemoryIds, audit?.sourceMemoryIds)
+        assertEquals(report.storedMemoryIds, audit?.storedMemoryIds)
+        assertTrue(audit?.synthesisStored == true)
+        assertNull(CuriosityPublicAuditBridge.take("curiosity-1"))
     }
 
     @Test
     fun blankSynthesisPersistsSourcesOnly() = runBlocking {
+        CuriosityPublicAuditBridge.clearForTests()
         val memory = RecordingMemoryGateway()
         val result = CuriosityResult(
             sourceText = "public material",
@@ -78,10 +89,15 @@ class CuriosityMemoryLearningTest {
         assertFalse(report.synthesisStored)
         assertEquals(listOf("memory-1"), report.storedMemoryIds)
         assertEquals(1, memory.flushCount)
+
+        val audit = CuriosityPublicAuditBridge.take("curiosity-blank")
+        assertEquals(report.toPublicKnowledgeAudit(), audit)
+        assertFalse(audit?.synthesisStored ?: true)
     }
 
     @Test
     fun derivedSynthesisUsesFirstActuallyLearnedSourceAsPrimaryProvenance() = runBlocking {
+        CuriosityPublicAuditBridge.clearForTests()
         val memory = RecordingMemoryGateway()
         val result = CuriosityResult(
             sourceText = "public material",
@@ -116,10 +132,12 @@ class CuriosityMemoryLearningTest {
         assertEquals("derived", memory.requests[1].importKind)
         assertEquals(listOf("memory-1"), memory.requests[1].parentMemoryIds)
         assertTrue(report.synthesisStored)
+        assertEquals(report.toPublicKnowledgeAudit(), CuriosityPublicAuditBridge.take("curiosity-primary"))
     }
 
     @Test
     fun flushFailureDoesNotDiscardLearnedPublicKnowledgeReport() = runBlocking {
+        CuriosityPublicAuditBridge.clearForTests()
         val memory = RecordingMemoryGateway(failFlush = true)
         val result = CuriosityResult(
             sourceText = "public material",
@@ -146,6 +164,10 @@ class CuriosityMemoryLearningTest {
         assertTrue(report.flushFailed)
         assertEquals(listOf("memory-1"), report.storedMemoryIds)
         assertEquals(1, memory.flushCount)
+
+        val audit = CuriosityPublicAuditBridge.take("curiosity-2")
+        assertEquals(report.toPublicKnowledgeAudit(), audit)
+        assertTrue(audit?.flushFailed == true)
     }
 }
 
