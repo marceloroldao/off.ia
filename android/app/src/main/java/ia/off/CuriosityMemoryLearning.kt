@@ -25,6 +25,7 @@ suspend fun learnCuriosityResult(
 
     val sourceIds = linkedSetOf<String>()
     val storedIds = linkedSetOf<String>()
+    var primaryLearnedSource: CuriositySource? = null
     var failedSources = 0
 
     result.sources.forEachIndexed { index, source ->
@@ -46,8 +47,11 @@ suspend fun learnCuriosityResult(
                     sessionId = sessionId,
                 ),
             )
-            sourceIds += learned.memoryIds
-            storedIds += learned.memoryIds
+            if (learned.memoryIds.isNotEmpty()) {
+                if (primaryLearnedSource == null) primaryLearnedSource = source
+                sourceIds += learned.memoryIds
+                storedIds += learned.memoryIds
+            }
         } catch (_: Exception) {
             failedSources += 1
         }
@@ -55,7 +59,7 @@ suspend fun learnCuriosityResult(
 
     var synthesisStored = false
     val synthesized = synthesis.trim()
-    val primarySource = result.sources.firstOrNull()
+    val primarySource = primaryLearnedSource
     if (synthesized.isNotBlank() && primarySource != null && sourceIds.isNotEmpty()) {
         try {
             val learned = memory.learnExternalKnowledge(

@@ -527,7 +527,7 @@ fun OffiaChatScreen() {
                 val publicLearning = learnCuriosityResult(
                     memory = memory,
                     result = result,
-                    synthesis = messages[curiosityIndex].text,
+                    synthesis = answer.toString(),
                     sessionId = activeSessionId,
                     requestId = curiosityMessage.id,
                 )
