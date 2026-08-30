@@ -2,6 +2,7 @@ package ia.off
 
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -46,6 +47,75 @@ class CuriosityMemoryLearningTest {
         assertTrue(report.synthesisStored)
         assertEquals(listOf("memory-1", "memory-2"), report.sourceMemoryIds)
         assertEquals(listOf("memory-1", "memory-2", "memory-3"), report.storedMemoryIds)
+    }
+
+    @Test
+    fun blankSynthesisPersistsSourcesOnly() = runBlocking {
+        val memory = RecordingMemoryGateway()
+        val result = CuriosityResult(
+            sourceText = "public material",
+            sources = listOf(
+                CuriositySource(
+                    title = "Source A",
+                    url = "https://pt.wikipedia.org/wiki/A",
+                    domain = "pt.wikipedia.org",
+                    excerpt = "A public fact is 7319.",
+                ),
+            ),
+        )
+
+        val report = learnCuriosityResult(
+            memory = memory,
+            result = result,
+            synthesis = "   ",
+            sessionId = "session-blank",
+            requestId = "curiosity-blank",
+            acquiredTime = "2026-08-30T12:00:30Z",
+        )
+
+        assertEquals(1, memory.requests.size)
+        assertEquals("imported", memory.requests.single().importKind)
+        assertFalse(report.synthesisStored)
+        assertEquals(listOf("memory-1"), report.storedMemoryIds)
+        assertEquals(1, memory.flushCount)
+    }
+
+    @Test
+    fun derivedSynthesisUsesFirstActuallyLearnedSourceAsPrimaryProvenance() = runBlocking {
+        val memory = RecordingMemoryGateway()
+        val result = CuriosityResult(
+            sourceText = "public material",
+            sources = listOf(
+                CuriositySource(
+                    title = "Empty Source",
+                    url = "https://pt.wikipedia.org/wiki/Empty",
+                    domain = "pt.wikipedia.org",
+                    excerpt = "   ",
+                ),
+                CuriositySource(
+                    title = "Accepted Source",
+                    url = "https://en.wikipedia.org/wiki/Accepted",
+                    domain = "en.wikipedia.org",
+                    excerpt = "Accepted public evidence.",
+                ),
+            ),
+        )
+
+        val report = learnCuriosityResult(
+            memory = memory,
+            result = result,
+            synthesis = "Derived answer from accepted evidence.",
+            sessionId = "session-primary",
+            requestId = "curiosity-primary",
+            acquiredTime = "2026-08-30T12:00:45Z",
+        )
+
+        assertEquals(2, memory.requests.size)
+        assertEquals("https://en.wikipedia.org/wiki/Accepted", memory.requests[0].sourceUrl)
+        assertEquals("https://en.wikipedia.org/wiki/Accepted", memory.requests[1].sourceUrl)
+        assertEquals("derived", memory.requests[1].importKind)
+        assertEquals(listOf("memory-1"), memory.requests[1].parentMemoryIds)
+        assertTrue(report.synthesisStored)
     }
 
     @Test
