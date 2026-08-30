@@ -1,0 +1,71 @@
+name: Patch Curiosity memory learning
+
+on:
+  push:
+    branches:
+      - feat/android-curiosity-memory-learning
+    paths:
+      - .github/workflows/patch-curiosity-memory-learning.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: feat/android-curiosity-memory-learning
+      - name: Connect Curiosity result to Memoria.ia
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path("android/app/src/main/java/ia/off/MainActivity.kt")
+          text = path.read_text(encoding="utf-8")
+          old = '''                messages[curiosityIndex] = messages[curiosityIndex].copy(
+                    text = answer.toString().ifBlank { "As fontes foram encontradas, mas o modelo não gerou uma síntese." },
+                    generation = messages[curiosityIndex].generation?.copy(
+                        latencyMs = generationLatency,
+                        publicSources = result.sources,
+                    ),
+                )
+                saveWorkspace()
+                status = "Offline • Curiosidade concluída • ${result.sources.size} fonte(s)"
+'''
+          new = '''                messages[curiosityIndex] = messages[curiosityIndex].copy(
+                    text = answer.toString().ifBlank { "As fontes foram encontradas, mas o modelo não gerou uma síntese." },
+                    generation = messages[curiosityIndex].generation?.copy(
+                        latencyMs = generationLatency,
+                        publicSources = result.sources,
+                    ),
+                )
+                val publicLearning = learnCuriosityResult(
+                    memory = memory,
+                    result = result,
+                    synthesis = messages[curiosityIndex].text,
+                    sessionId = activeSessionId,
+                    requestId = curiosityMessage.id,
+                )
+                saveWorkspace()
+                status = when {
+                    publicLearning.flushFailed ->
+                        "Offline • Curiosidade concluída • memória pública aguarda sincronização"
+                    publicLearning.learned ->
+                        "Offline • Curiosidade concluída • ${result.sources.size} fonte(s) • ${publicLearning.storedMemoryIds.size} memória(s) pública(s)"
+                    publicLearning.failedSourceCount > 0 ->
+                        "Offline • Curiosidade concluída • aprendizado público indisponível"
+                    else ->
+                        "Offline • Curiosidade concluída • ${result.sources.size} fonte(s)"
+                }
+'''
+          if old not in text:
+              raise SystemExit("expected Curiosity completion block not found exactly")
+          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+      - name: Commit focused integration
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add android/app/src/main/java/ia/off/MainActivity.kt
+          git commit -m "feat(android): persist Curiosity as public Memoria knowledge"
+          git push origin HEAD:feat/android-curiosity-memory-learning
