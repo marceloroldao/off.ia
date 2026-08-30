@@ -22,6 +22,14 @@ data class ResponseMemoryMetadata(
     val conversationWindowCount: Int = 0,
 )
 
+data class ImprovementRecord(
+    val provider: ImproveProviderKind,
+    val text: String,
+    val modelOrRoute: String? = null,
+    val latencyMs: Long? = null,
+    val createdAt: Long = System.currentTimeMillis(),
+)
+
 data class GenerationMetadata(
     val source: ResponseSource = ResponseSource.LOCAL,
     val modelName: String? = null,
@@ -36,4 +44,5 @@ data class ChatMessage(
     val createdAt: Long = System.currentTimeMillis(),
     val memory: ResponseMemoryMetadata? = null,
     val generation: GenerationMetadata? = null,
+    val improvements: List<ImprovementRecord> = emptyList(),
 )
