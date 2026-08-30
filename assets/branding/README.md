@@ -1,26 +1,18 @@
-# OFF.IA Branding
+# OFF.IA Visual Identity
 
-This directory contains the visual identity baseline selected for OFF.IA.
+Canonical brand assets live in this directory.
 
-The approved direction is the **first logo concept**: a blue/cyan orbital `O`, two resolutive trajectories, a central local-memory nucleus and the `OFF.IA` wordmark with the tagline **IA OFFLINE • PRIVADA • LOCAL • SUA**.
+## Official files
 
-## Assets
+- `offia-logo-original-512.png` — official raster logo used by the repository README.
+- `offia-logo-primary.svg` — scalable primary logo.
+- `offia-logo-transparent.svg` — scalable logo for transparent backgrounds.
+- `offia-symbol.svg` — standalone orbital symbol.
+- `offia-app-icon.svg` — application icon source.
+- `offia-favicon-64.png` — small favicon asset.
 
-- `offia-logo-original-512.png` — compact raster derivative of the selected first logo; preferred for README/docs where a PNG is convenient.
-- `offia-logo-primary.svg` — scalable primary logo on a white background.
-- `offia-logo-transparent.svg` — scalable transparent logo for UI/layout use.
-- `offia-symbol.svg` — isolated orbital/nucleus symbol.
-- `offia-app-icon.svg` — square app-icon treatment.
-- `offia-favicon-64.png` — compact raster favicon.
+The canonical path for the official PNG is:
 
-## Visual meaning
+`assets/branding/offia-logo-original-512.png`
 
-- **Outer orbital ring:** OFF.IA as the local/offline operating environment.
-- **Inner ring:** Memoria.ia/context trajectory.
-- **Central nucleus:** current state and local memory.
-- **Open segments and dots:** information entering, being resolved and returning as an answer.
-- **Blue → cyan gradient:** continuity from persistence/state to active inference/interaction.
-
-## Usage
-
-Keep the symbol proportions, opening directions, blue/cyan palette and `OFF.IA` naming consistent. Prefer SVG assets for scalable UI and the PNG reference for repository documentation.
+Do not create nested `assets/branding/assets/branding/` directories when replacing the logo.
