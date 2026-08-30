@@ -110,6 +110,13 @@ class ChatStore(context: Context) {
     }
 
     @Synchronized
+    fun externalPublicMemoryIdsUsed(memoryIds: List<String>): List<String> {
+        if (memoryIds.isEmpty()) return emptyList()
+        val workspace = readWorkspaceWithoutRewrite() ?: return emptyList()
+        return matchExternalPublicMemoryIds(memoryIds, workspace.sessions)
+    }
+
+    @Synchronized
     fun save(workspace: ChatWorkspace) {
         mergeTransientCuriosityAudits(workspace)
         mergeStoredImprovements(workspace)

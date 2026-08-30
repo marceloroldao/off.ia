@@ -58,6 +58,9 @@ fun MessageCard(
     val publicSources = message.generation?.publicSources.orEmpty()
     val publicKnowledge = message.generation?.publicKnowledge
         ?: if (isCuriosity) CuriosityPublicAuditBridge.peek(message.id) else null
+    val externalPublicMemoryIdsUsed = remember(message.id, message.memory?.memoryIds) {
+        chatStore.externalPublicMemoryIdsUsed(message.memory?.memoryIds.orEmpty())
+    }
     val hasPublicEvidence = publicSources.isNotEmpty() || publicKnowledge != null
     var improvements by remember(message.id) { mutableStateOf(message.improvements) }
     var improving by remember(message.id) { mutableStateOf(false) }
@@ -253,7 +256,10 @@ fun MessageCard(
             }
 
             if (!isUser && memoryExpanded) {
-                ResponseMemoryPanel(message.memory)
+                ResponseMemoryPanel(
+                    memory = message.memory,
+                    externalPublicMemoryIdsUsed = externalPublicMemoryIdsUsed,
+                )
             }
             if (!isUser && sourcesExpanded && hasPublicEvidence) {
                 PublicSourcesPanel(
@@ -416,7 +422,10 @@ private fun PublicSourcesPanel(
 }
 
 @Composable
-private fun ResponseMemoryPanel(memory: ResponseMemoryMetadata?) {
+private fun ResponseMemoryPanel(
+    memory: ResponseMemoryMetadata?,
+    externalPublicMemoryIdsUsed: List<String> = emptyList(),
+) {
     Surface(
         tonalElevation = 2.dp,
         shape = MaterialTheme.shapes.medium,
@@ -446,6 +455,17 @@ private fun ResponseMemoryPanel(memory: ResponseMemoryMetadata?) {
                     "Trajetória: ${if (memory.trajectoryUsed) "usada" else "não usada"} • janela=${memory.conversationWindowCount}",
                     style = MaterialTheme.typography.bodySmall,
                 )
+                if (externalPublicMemoryIdsUsed.isNotEmpty()) {
+                    HorizontalDivider()
+                    Text(
+                        "Conhecimento público usado: external_public",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    Text(
+                        "IDs públicos usados: ${externalPublicMemoryIdsUsed.joinToString()}",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
                 Text("Contexto selecionado: ${memory.selectedContext.length} caracteres", style = MaterialTheme.typography.bodySmall)
                 if (memory.selectedContext.isNotBlank()) {
                     HorizontalDivider()
