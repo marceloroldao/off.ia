@@ -4,9 +4,10 @@ internal fun externalPublicMemoryIds(sessions: Iterable<ChatSession>): Set<Strin
     val ids = linkedSetOf<String>()
     sessions.forEach { session ->
         session.messages.forEach { message ->
-            val audit = message.generation?.publicKnowledge ?: return@forEach
-            if (audit.knowledgeClass != "external_public") return@forEach
-            audit.storedMemoryIds.filterTo(ids) { it.isNotBlank() }
+            val audit = message.generation?.publicKnowledge
+            if (audit != null && audit.knowledgeClass == "external_public") {
+                audit.storedMemoryIds.filterTo(ids) { it.isNotBlank() }
+            }
         }
     }
     return ids
