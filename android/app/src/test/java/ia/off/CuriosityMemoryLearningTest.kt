@@ -39,7 +39,7 @@ class CuriosityMemoryLearningTest {
         assertEquals(3, memory.requests.size)
         assertEquals("imported", memory.requests[0].importKind)
         assertEquals("imported", memory.requests[1].importKind)
-        assertEquals("synthesized", memory.requests[2].importKind)
+        assertEquals("derived", memory.requests[2].importKind)
         assertEquals(listOf("memory-1", "memory-2"), memory.requests[2].parentMemoryIds)
         assertEquals("offia-curiosity", memory.requests[2].providerId)
         assertEquals(1, memory.flushCount)
@@ -47,9 +47,41 @@ class CuriosityMemoryLearningTest {
         assertEquals(listOf("memory-1", "memory-2"), report.sourceMemoryIds)
         assertEquals(listOf("memory-1", "memory-2", "memory-3"), report.storedMemoryIds)
     }
+
+    @Test
+    fun flushFailureDoesNotDiscardLearnedPublicKnowledgeReport() = runBlocking {
+        val memory = RecordingMemoryGateway(failFlush = true)
+        val result = CuriosityResult(
+            sourceText = "public material",
+            sources = listOf(
+                CuriositySource(
+                    title = "Source A",
+                    url = "https://pt.wikipedia.org/wiki/A",
+                    domain = "pt.wikipedia.org",
+                    excerpt = "A public fact is 7319.",
+                ),
+            ),
+        )
+
+        val report = learnCuriosityResult(
+            memory = memory,
+            result = result,
+            synthesis = "",
+            sessionId = "session-2",
+            requestId = "curiosity-2",
+            acquiredTime = "2026-08-30T12:01:00Z",
+        )
+
+        assertTrue(report.learned)
+        assertTrue(report.flushFailed)
+        assertEquals(listOf("memory-1"), report.storedMemoryIds)
+        assertEquals(1, memory.flushCount)
+    }
 }
 
-private class RecordingMemoryGateway : MemoryGateway {
+private class RecordingMemoryGateway(
+    private val failFlush: Boolean = false,
+) : MemoryGateway {
     override val available: Boolean = true
     val requests = mutableListOf<ExternalKnowledgeSource>()
     var flushCount: Int = 0
@@ -77,5 +109,6 @@ private class RecordingMemoryGateway : MemoryGateway {
 
     override suspend fun flush() {
         flushCount += 1
+        if (failFlush) error("synthetic flush failure")
     }
 }
