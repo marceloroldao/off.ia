@@ -56,6 +56,8 @@ fun MessageCard(
         responseSource == ResponseSource.GEMINI ||
         responseSource == ResponseSource.MA2A
     val publicSources = message.generation?.publicSources.orEmpty()
+    val publicKnowledge = message.generation?.publicKnowledge
+    val hasPublicEvidence = publicSources.isNotEmpty() || publicKnowledge != null
     var improvements by remember(message.id) { mutableStateOf(message.improvements) }
     var improving by remember(message.id) { mutableStateOf(false) }
     var improveError by remember(message.id) { mutableStateOf<String?>(null) }
@@ -187,9 +189,17 @@ fun MessageCard(
                     TextButton(onClick = { memoryExpanded = !memoryExpanded }) {
                         Text(if (memoryExpanded) "Ocultar memória" else "Memória")
                     }
-                    if (publicSources.isNotEmpty()) {
+                    if (hasPublicEvidence) {
                         TextButton(onClick = { sourcesExpanded = !sourcesExpanded }) {
-                            Text(if (sourcesExpanded) "Ocultar fontes" else "Fontes (${publicSources.size})")
+                            Text(
+                                if (sourcesExpanded) {
+                                    "Ocultar fontes"
+                                } else if (publicSources.isNotEmpty()) {
+                                    "Fontes (${publicSources.size})"
+                                } else {
+                                    "Conhecimento público"
+                                },
+                            )
                         }
                     }
                     TextButton(
@@ -244,9 +254,10 @@ fun MessageCard(
             if (!isUser && memoryExpanded) {
                 ResponseMemoryPanel(message.memory)
             }
-            if (!isUser && sourcesExpanded && publicSources.isNotEmpty()) {
+            if (!isUser && sourcesExpanded && hasPublicEvidence) {
                 PublicSourcesPanel(
                     sources = publicSources,
+                    audit = publicKnowledge,
                     onOpen = { source ->
                         runCatching {
                             context.startActivity(
@@ -342,6 +353,7 @@ private fun ImprovementPanel(
 @Composable
 private fun PublicSourcesPanel(
     sources: List<CuriositySource>,
+    audit: PublicKnowledgeAudit?,
     onOpen: (CuriositySource) -> Unit,
 ) {
     Surface(
@@ -355,11 +367,42 @@ private fun PublicSourcesPanel(
         ) {
             Text("Fontes públicas", style = MaterialTheme.typography.titleSmall)
             Text(
-                "Estas fontes pertencem à resposta de Curiosidade e não foram gravadas automaticamente como memória pessoal.",
+                "Estas fontes são públicas/externas e nunca são registradas como afirmações pessoais do usuário.",
                 style = MaterialTheme.typography.bodySmall,
             )
+            audit?.let { publicAudit ->
+                HorizontalDivider()
+                Text(
+                    "Memoria.ia: ${publicAudit.knowledgeClass} • ${publicAudit.storedMemoryIds.size} registro(s) público(s)",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Text(
+                    "IDs das fontes: ${if (publicAudit.sourceMemoryIds.isEmpty()) "—" else publicAudit.sourceMemoryIds.joinToString()}",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Text(
+                    "IDs aprendidos: ${if (publicAudit.storedMemoryIds.isEmpty()) "—" else publicAudit.storedMemoryIds.joinToString()}",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Text(
+                    "Síntese derivada: ${if (publicAudit.synthesisStored) "aprendida" else "não aprendida"}",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                if (publicAudit.failedSourceCount > 0) {
+                    Text(
+                        "Fontes rejeitadas/indisponíveis: ${publicAudit.failedSourceCount}",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                if (publicAudit.flushFailed) {
+                    Text(
+                        "A Memoria.ia aceitou registros, mas a barreira final de flush retornou falha.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
             sources.forEachIndexed { index, source ->
-                if (index > 0) HorizontalDivider()
+                if (index > 0 || audit != null) HorizontalDivider()
                 Text("${index + 1}. ${source.title}", style = MaterialTheme.typography.bodyMedium)
                 Text(source.domain, style = MaterialTheme.typography.labelSmall)
                 source.excerpt?.takeIf { it.isNotBlank() }?.let {
