@@ -67,7 +67,7 @@ suspend fun learnCuriosityResult(
                     acquiredTime = acquiredTime,
                     sourceExcerpt = primarySource.excerpt.orEmpty().trim().take(1_200),
                     providerId = "offia-curiosity",
-                    importKind = "synthesized",
+                    importKind = "derived",
                     validationConfidence = 0.80,
                     requestId = "$requestId:synthesis",
                     sessionId = sessionId,
