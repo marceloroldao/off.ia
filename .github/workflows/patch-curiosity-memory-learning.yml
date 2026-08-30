@@ -18,8 +18,9 @@ jobs:
         with:
           ref: feat/android-curiosity-memory-learning
       - name: Connect Curiosity result to Memoria.ia
-        shell: python
+        shell: bash
         run: |
+          python3 <<'PY'
           from pathlib import Path
           path = Path("android/app/src/main/java/ia/off/MainActivity.kt")
           text = path.read_text(encoding="utf-8")
@@ -62,7 +63,9 @@ jobs:
           if old not in text:
               raise SystemExit("expected Curiosity completion block not found exactly")
           path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          PY
       - name: Commit focused integration
+        shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
