@@ -18,6 +18,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.unit.dp
 
 @Composable
 fun ImproveSettingsSection(
@@ -31,14 +32,14 @@ fun ImproveSettingsSection(
     var openAiConfigured by remember { mutableStateOf(credentials.has(SecureCredentialStore.OPENAI_API_KEY)) }
     var geminiConfigured by remember { mutableStateOf(credentials.has(SecureCredentialStore.GEMINI_API_KEY)) }
 
-    Column(verticalArrangement = Arrangement.spacedBy(androidx.compose.ui.unit.dp(10f))) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text("Melhorar resposta", style = MaterialTheme.typography.titleMedium)
         Text(
             "Escolha uma inteligência externa opcional. OFF.IA envia apenas a pergunta, a resposta local e o contexto mínimo selecionado pela Memoria.ia.",
             style = MaterialTheme.typography.bodySmall,
         )
 
-        Row(horizontalArrangement = Arrangement.spacedBy(androidx.compose.ui.unit.dp(8f))) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             ProviderButton(
                 label = "Nenhum",
                 selected = settings.improveProvider == null,
@@ -71,7 +72,7 @@ fun ImproveSettingsSection(
             label = { Text("OpenAI API key") },
             visualTransformation = PasswordVisualTransformation(),
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(androidx.compose.ui.unit.dp(8f))) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(
                 enabled = openAiKeyDraft.isNotBlank(),
                 onClick = {
@@ -110,7 +111,7 @@ fun ImproveSettingsSection(
             label = { Text("Gemini API key") },
             visualTransformation = PasswordVisualTransformation(),
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(androidx.compose.ui.unit.dp(8f))) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             OutlinedButton(
                 enabled = geminiKeyDraft.isNotBlank(),
                 onClick = {
