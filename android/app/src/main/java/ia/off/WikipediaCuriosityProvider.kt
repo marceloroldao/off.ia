@@ -15,9 +15,29 @@ class WikipediaCuriosityProvider : CuriosityProvider {
         require(query.isNotBlank()) { "Consulta de curiosidade vazia" }
 
         val limit = request.maxSources.coerceIn(1, 5)
+        val portuguese = queryWikipedia(language = "pt", query = query, limit = limit)
+        val sources = if (portuguese.isNotEmpty()) {
+            portuguese
+        } else {
+            queryWikipedia(language = "en", query = query, limit = limit)
+        }
+
+        require(sources.isNotEmpty()) { "Nenhum extrato utilizável encontrado" }
+        val sourceText = sources.joinToString("\n\n") { source ->
+            "Fonte: ${source.title}\n${source.excerpt.orEmpty()}"
+        }.take(7_000)
+
+        CuriosityResult(sourceText = sourceText, sources = sources)
+    }
+
+    private fun queryWikipedia(
+        language: String,
+        query: String,
+        limit: Int,
+    ): List<CuriositySource> {
         val encoded = URLEncoder.encode(query, Charsets.UTF_8.name())
         val endpoint =
-            "https://pt.wikipedia.org/w/api.php" +
+            "https://$language.wikipedia.org/w/api.php" +
                 "?action=query&format=json&formatversion=2" +
                 "&generator=search&gsrsearch=$encoded&gsrlimit=$limit" +
                 "&prop=extracts%7Cinfo&exintro=1&explaintext=1&inprop=url&redirects=1"
@@ -31,15 +51,14 @@ class WikipediaCuriosityProvider : CuriosityProvider {
             setRequestProperty("User-Agent", "OFF.IA/0.1 (+https://github.com/marceloroldao/off.ia)")
         }
 
-        try {
+        return try {
             val responseCode = connection.responseCode
-            require(responseCode in 200..299) { "Wikipedia HTTP $responseCode" }
+            if (responseCode !in 200..299) return emptyList()
             val body = connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
             val root = JSONObject(body)
-            val pages = root.optJSONObject("query")?.optJSONArray("pages")
-                ?: error("Nenhum resultado público encontrado")
+            val pages = root.optJSONObject("query")?.optJSONArray("pages") ?: return emptyList()
 
-            val sources = buildList {
+            buildList {
                 for (index in 0 until pages.length()) {
                     val page = pages.optJSONObject(index) ?: continue
                     val title = page.optString("title").trim()
@@ -50,19 +69,12 @@ class WikipediaCuriosityProvider : CuriosityProvider {
                         CuriositySource(
                             title = title,
                             url = fullUrl,
-                            domain = "pt.wikipedia.org",
+                            domain = "$language.wikipedia.org",
                             excerpt = extract.take(2_000),
                         ),
                     )
                 }
             }.take(limit)
-
-            require(sources.isNotEmpty()) { "Nenhum extrato utilizável encontrado" }
-            val sourceText = sources.joinToString("\n\n") { source ->
-                "Fonte: ${source.title}\n${source.excerpt.orEmpty()}"
-            }.take(7_000)
-
-            CuriosityResult(sourceText = sourceText, sources = sources)
         } finally {
             connection.disconnect()
         }
