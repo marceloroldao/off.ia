@@ -53,6 +53,7 @@ fun ConversationTopBar(
     var actionsExpanded by remember { mutableStateOf(false) }
     var renameDialogVisible by remember { mutableStateOf(false) }
     var deleteDialogVisible by remember { mutableStateOf(false) }
+    var searchDialogVisible by remember { mutableStateOf(false) }
     var settingsVisible by remember { mutableStateOf(false) }
     var renameText by remember(activeSession.id) { mutableStateOf(activeSession.title) }
 
@@ -68,12 +69,21 @@ fun ConversationTopBar(
                     Text(activeSession.title.take(18))
                 }
                 DropdownMenu(expanded = sessionMenuExpanded, onDismissRequest = { sessionMenuExpanded = false }) {
-                    sessions.sortedByDescending { it.updatedAt }.forEach { session ->
+                    sessions.sortedByDescending { it.updatedAt }.take(12).forEach { session ->
                         DropdownMenuItem(
                             text = { Text(session.title) },
                             onClick = {
                                 sessionMenuExpanded = false
                                 onSelectSession(session.id)
+                            },
+                        )
+                    }
+                    if (sessions.size > 12) {
+                        DropdownMenuItem(
+                            text = { Text("Ver todas / buscar…") },
+                            onClick = {
+                                sessionMenuExpanded = false
+                                searchDialogVisible = true
                             },
                         )
                     }
@@ -85,6 +95,13 @@ fun ConversationTopBar(
             Box {
                 OutlinedButton(enabled = !busy || downloadActive, onClick = { actionsExpanded = true }) { Text("⋮") }
                 DropdownMenu(expanded = actionsExpanded, onDismissRequest = { actionsExpanded = false }) {
+                    DropdownMenuItem(
+                        text = { Text("Buscar conversas") },
+                        onClick = {
+                            actionsExpanded = false
+                            searchDialogVisible = true
+                        },
+                    )
                     DropdownMenuItem(
                         enabled = !busy,
                         text = { Text("Renomear conversa") },
@@ -147,6 +164,15 @@ fun ConversationTopBar(
                 Text("Exportar Memoria.ia")
             }
         }
+    }
+
+    if (searchDialogVisible) {
+        ConversationSearchDialog(
+            sessions = sessions,
+            activeSessionId = activeSession.id,
+            onSelect = onSelectSession,
+            onDismiss = { searchDialogVisible = false },
+        )
     }
 
     if (renameDialogVisible) {
