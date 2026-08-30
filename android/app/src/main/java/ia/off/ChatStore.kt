@@ -19,6 +19,11 @@ data class ChatWorkspace(
     var activeSessionId: String,
 )
 
+data class ChatInteraction(
+    val userQuestion: String,
+    val response: ChatMessage,
+)
+
 /**
  * Durable UI transcript workspace.
  *
@@ -34,6 +39,7 @@ class ChatStore(context: Context) {
         private const val LEGACY_FILE_NAME = "chat-history-v1.json"
         private const val MAX_MESSAGES_PER_SESSION = 2000
         private const val MAX_SESSIONS = 100
+        private const val MAX_IMPROVEMENTS_PER_MESSAGE = 5
     }
 
     private val file = File(context.filesDir, FILE_NAME)
@@ -69,7 +75,44 @@ class ChatStore(context: Context) {
     )
 
     @Synchronized
+    fun findInteraction(responseId: String): ChatInteraction? {
+        val workspace = readWorkspaceWithoutRewrite() ?: return null
+        workspace.sessions.forEach { session ->
+            val responseIndex = session.messages.indexOfFirst { it.id == responseId }
+            if (responseIndex < 0) return@forEach
+            val response = session.messages[responseIndex]
+            if (response.role == "Você") return null
+            val userIndex = (responseIndex - 1 downTo 0).firstOrNull { session.messages[it].role == "Você" }
+                ?: return null
+            return ChatInteraction(
+                userQuestion = session.messages[userIndex].text,
+                response = response,
+            )
+        }
+        return null
+    }
+
+    @Synchronized
+    fun appendImprovement(responseId: String, record: ImprovementRecord): Boolean {
+        val workspace = readWorkspaceWithoutRewrite() ?: return false
+        workspace.sessions.forEach { session ->
+            val index = session.messages.indexOfFirst { it.id == responseId }
+            if (index < 0) return@forEach
+            val current = session.messages[index]
+            session.messages[index] = current.copy(
+                improvements = (current.improvements + record).takeLast(MAX_IMPROVEMENTS_PER_MESSAGE),
+            )
+            session.updatedAt = System.currentTimeMillis()
+            save(workspace)
+            return true
+        }
+        return false
+    }
+
+    @Synchronized
     fun save(workspace: ChatWorkspace) {
+        mergeStoredImprovements(workspace)
+
         val keptSessions = workspace.sessions
             .sortedByDescending { it.updatedAt }
             .take(MAX_SESSIONS)
@@ -101,6 +144,41 @@ class ChatStore(context: Context) {
             put("sessions", sessionsArray)
         }
         atomicWrite(root.toString())
+    }
+
+    private fun mergeStoredImprovements(workspace: ChatWorkspace) {
+        val stored = readWorkspaceWithoutRewrite() ?: return
+        val improvementsById = stored.sessions
+            .asSequence()
+            .flatMap { it.messages.asSequence() }
+            .filter { it.improvements.isNotEmpty() }
+            .associate { it.id to it.improvements }
+
+        if (improvementsById.isEmpty()) return
+        workspace.sessions.forEach { session ->
+            session.messages.indices.forEach { index ->
+                val message = session.messages[index]
+                val storedImprovements = improvementsById[message.id].orEmpty()
+                if (storedImprovements.isNotEmpty()) {
+                    val merged = (message.improvements + storedImprovements)
+                        .distinctBy { improvement ->
+                            listOf(
+                                improvement.provider.name,
+                                improvement.modelOrRoute.orEmpty(),
+                                improvement.text,
+                                improvement.createdAt.toString(),
+                            ).joinToString("\u0000")
+                        }
+                        .takeLast(MAX_IMPROVEMENTS_PER_MESSAGE)
+                    session.messages[index] = message.copy(improvements = merged)
+                }
+            }
+        }
+    }
+
+    private fun readWorkspaceWithoutRewrite(): ChatWorkspace? {
+        if (!file.isFile) return null
+        return runCatching { parseWorkspace(file.readText(Charsets.UTF_8)) }.getOrNull()
     }
 
     private fun messageToJson(message: ChatMessage): JSONObject = JSONObject().apply {
@@ -136,6 +214,20 @@ class ChatStore(context: Context) {
                                 source.excerpt?.let { put("excerpt", it) }
                             })
                         }
+                    })
+                }
+            })
+        }
+
+        if (message.improvements.isNotEmpty()) {
+            put("improvements", JSONArray().apply {
+                message.improvements.takeLast(MAX_IMPROVEMENTS_PER_MESSAGE).forEach { improvement ->
+                    put(JSONObject().apply {
+                        put("provider", improvement.provider.name)
+                        put("text", improvement.text)
+                        improvement.modelOrRoute?.let { put("model_or_route", it) }
+                        improvement.latencyMs?.let { put("latency_ms", it) }
+                        put("created_at", improvement.createdAt)
                     })
                 }
             })
@@ -225,6 +317,28 @@ class ChatStore(context: Context) {
             )
         }
 
+        val improvements = buildList {
+            val array = json.optJSONArray("improvements") ?: return@buildList
+            val start = (array.length() - MAX_IMPROVEMENTS_PER_MESSAGE).coerceAtLeast(0)
+            for (index in start until array.length()) {
+                val item = array.optJSONObject(index) ?: continue
+                val provider = runCatching {
+                    ImproveProviderKind.valueOf(item.optString("provider"))
+                }.getOrNull() ?: continue
+                val text = item.optString("text")
+                if (text.isBlank()) continue
+                add(
+                    ImprovementRecord(
+                        provider = provider,
+                        text = text,
+                        modelOrRoute = item.optString("model_or_route").takeIf { it.isNotBlank() },
+                        latencyMs = if (item.has("latency_ms") && !item.isNull("latency_ms")) item.optLong("latency_ms") else null,
+                        createdAt = item.optLong("created_at", fallbackCreatedAt),
+                    ),
+                )
+            }
+        }
+
         return ChatMessage(
             id = json.optString("id").ifBlank { UUID.randomUUID().toString() },
             role = role,
@@ -232,6 +346,7 @@ class ChatStore(context: Context) {
             createdAt = json.optLong("created_at", fallbackCreatedAt),
             memory = memory,
             generation = generation,
+            improvements = improvements,
         )
     }
 
