@@ -3,7 +3,6 @@ package ia.off
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -50,13 +49,13 @@ class CuriosityMemoryLearningTest {
         assertEquals(listOf("memory-1", "memory-2"), report.sourceMemoryIds)
         assertEquals(listOf("memory-1", "memory-2", "memory-3"), report.storedMemoryIds)
 
-        val audit = CuriosityPublicAuditBridge.take("curiosity-1")
+        val audit = CuriosityPublicAuditBridge.peek("curiosity-1")
         assertEquals(report.toPublicKnowledgeAudit(), audit)
         assertEquals("external_public", audit?.knowledgeClass)
         assertEquals(report.sourceMemoryIds, audit?.sourceMemoryIds)
         assertEquals(report.storedMemoryIds, audit?.storedMemoryIds)
         assertTrue(audit?.synthesisStored == true)
-        assertNull(CuriosityPublicAuditBridge.take("curiosity-1"))
+        assertEquals(audit, CuriosityPublicAuditBridge.peek("curiosity-1"))
     }
 
     @Test
@@ -90,7 +89,7 @@ class CuriosityMemoryLearningTest {
         assertEquals(listOf("memory-1"), report.storedMemoryIds)
         assertEquals(1, memory.flushCount)
 
-        val audit = CuriosityPublicAuditBridge.take("curiosity-blank")
+        val audit = CuriosityPublicAuditBridge.peek("curiosity-blank")
         assertEquals(report.toPublicKnowledgeAudit(), audit)
         assertFalse(audit?.synthesisStored ?: true)
     }
@@ -132,7 +131,7 @@ class CuriosityMemoryLearningTest {
         assertEquals("derived", memory.requests[1].importKind)
         assertEquals(listOf("memory-1"), memory.requests[1].parentMemoryIds)
         assertTrue(report.synthesisStored)
-        assertEquals(report.toPublicKnowledgeAudit(), CuriosityPublicAuditBridge.take("curiosity-primary"))
+        assertEquals(report.toPublicKnowledgeAudit(), CuriosityPublicAuditBridge.peek("curiosity-primary"))
     }
 
     @Test
@@ -165,7 +164,7 @@ class CuriosityMemoryLearningTest {
         assertEquals(listOf("memory-1"), report.storedMemoryIds)
         assertEquals(1, memory.flushCount)
 
-        val audit = CuriosityPublicAuditBridge.take("curiosity-2")
+        val audit = CuriosityPublicAuditBridge.peek("curiosity-2")
         assertEquals(report.toPublicKnowledgeAudit(), audit)
         assertTrue(audit?.flushFailed == true)
     }

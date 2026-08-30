@@ -1,7 +1,7 @@
 package ia.off
 
 import java.time.Instant
-import java.util.concurrent.ConcurrentHashMap
+import java.util.LinkedHashMap
 
 data class CuriosityMemoryLearningReport(
     val sourceMemoryIds: List<String> = emptyList(),
@@ -23,21 +23,33 @@ data class CuriosityMemoryLearningReport(
 }
 
 /**
- * Process-local handoff between Curiosity learning and the durable chat transcript.
+ * Small process-local presentation cache for the Curiosity audit returned by
+ * Memoria.ia. It is not authoritative memory: Memoria.ia + BDR own memory and
+ * ChatStore owns the durable UI transcript copy.
  *
- * This is deliberately not a memory store. Memoria.ia + BDR remain authoritative.
- * The bridge only lets the immediately following ChatStore.save() attach the
- * already-returned public-learning audit to the matching Curiosity response.
+ * Keeping a bounded cache lets the currently rendered Curiosity card expose the
+ * audit immediately after learning, before a chat reload reconstructs it from
+ * the durable workspace.
  */
 internal object CuriosityPublicAuditBridge {
-    private val pending = ConcurrentHashMap<String, PublicKnowledgeAudit>()
+    private const val MAX_ENTRIES = 128
+    private val pending = LinkedHashMap<String, PublicKnowledgeAudit>()
 
+    @Synchronized
     fun record(responseId: String, audit: PublicKnowledgeAudit) {
-        if (responseId.isNotBlank()) pending[responseId] = audit
+        if (responseId.isBlank()) return
+        pending.remove(responseId)
+        pending[responseId] = audit
+        while (pending.size > MAX_ENTRIES) {
+            val eldest = pending.entries.firstOrNull()?.key ?: break
+            pending.remove(eldest)
+        }
     }
 
-    fun take(responseId: String): PublicKnowledgeAudit? = pending.remove(responseId)
+    @Synchronized
+    fun peek(responseId: String): PublicKnowledgeAudit? = pending[responseId]
 
+    @Synchronized
     fun clearForTests() = pending.clear()
 }
 

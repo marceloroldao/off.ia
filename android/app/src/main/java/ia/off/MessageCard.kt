@@ -57,6 +57,7 @@ fun MessageCard(
         responseSource == ResponseSource.MA2A
     val publicSources = message.generation?.publicSources.orEmpty()
     val publicKnowledge = message.generation?.publicKnowledge
+        ?: if (isCuriosity) CuriosityPublicAuditBridge.peek(message.id) else null
     val hasPublicEvidence = publicSources.isNotEmpty() || publicKnowledge != null
     var improvements by remember(message.id) { mutableStateOf(message.improvements) }
     var improving by remember(message.id) { mutableStateOf(false) }
