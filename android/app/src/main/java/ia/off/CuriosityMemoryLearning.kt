@@ -9,6 +9,7 @@ data class CuriosityMemoryLearningReport(
     val failedSourceCount: Int = 0,
     val synthesisStored: Boolean = false,
     val flushFailed: Boolean = false,
+    val failureReason: String? = null,
 ) {
     val learned: Boolean
         get() = storedMemoryIds.isNotEmpty()
@@ -67,6 +68,7 @@ suspend fun learnCuriosityResult(
     val storedIds = linkedSetOf<String>()
     var primaryLearnedSource: CuriositySource? = null
     var failedSources = 0
+    var firstFailureReason: String? = null
 
     result.sources.forEachIndexed { index, source ->
         val excerpt = source.excerpt?.trim().orEmpty()
@@ -92,8 +94,11 @@ suspend fun learnCuriosityResult(
                 sourceIds += learned.memoryIds
                 storedIds += learned.memoryIds
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
             failedSources += 1
+            if (firstFailureReason == null) {
+                firstFailureReason = e.message ?: e.javaClass.simpleName
+            }
         }
     }
 
@@ -120,7 +125,10 @@ suspend fun learnCuriosityResult(
             )
             storedIds += learned.memoryIds
             synthesisStored = learned.memoryIds.isNotEmpty()
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            if (firstFailureReason == null) {
+                firstFailureReason = e.message ?: e.javaClass.simpleName
+            }
             // Imported public sources remain valid even if Memoria.ia rejects
             // a derived synthesis conservatively.
         }
@@ -143,6 +151,7 @@ suspend fun learnCuriosityResult(
         failedSourceCount = failedSources,
         synthesisStored = synthesisStored,
         flushFailed = flushFailed,
+        failureReason = firstFailureReason,
     )
     CuriosityPublicAuditBridge.record(requestId, report.toPublicKnowledgeAudit())
     return report
