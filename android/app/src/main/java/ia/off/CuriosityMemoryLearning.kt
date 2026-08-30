@@ -7,6 +7,7 @@ data class CuriosityMemoryLearningReport(
     val storedMemoryIds: List<String> = emptyList(),
     val failedSourceCount: Int = 0,
     val synthesisStored: Boolean = false,
+    val flushFailed: Boolean = false,
 ) {
     val learned: Boolean
         get() = storedMemoryIds.isNotEmpty()
@@ -81,12 +82,22 @@ suspend fun learnCuriosityResult(
         }
     }
 
-    if (storedIds.isNotEmpty()) memory.flush()
+    var flushFailed = false
+    if (storedIds.isNotEmpty()) {
+        try {
+            memory.flush()
+        } catch (_: Exception) {
+            // Curiosity itself remains usable. The UI can report that durable
+            // synchronization needs attention without discarding the answer.
+            flushFailed = true
+        }
+    }
 
     return CuriosityMemoryLearningReport(
         sourceMemoryIds = sourceIds.toList(),
         storedMemoryIds = storedIds.toList(),
         failedSourceCount = failedSources,
         synthesisStored = synthesisStored,
+        flushFailed = flushFailed,
     )
 }
