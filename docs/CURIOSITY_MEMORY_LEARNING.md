@@ -33,9 +33,9 @@ For each Curiosity request:
 
 1. OFF.IA acquires public source material through the explicit Curiosity network boundary.
 2. The local GGUF model synthesizes the answer on-device.
-3. Each usable public source excerpt is submitted to Memoria.ia through the additive mobile ABI as `external_public` with URL, domain, title, acquisition time and provider metadata.
+3. Each usable public source excerpt is submitted to Memoria.ia through the additive mobile ABI as `external_public` with URL, domain, title, acquisition time and provider metadata, using `import_kind=imported`.
 4. Memoria.ia returns durable memory IDs and owns source authority, semantic deduplication, conflict handling and persistence.
-5. The locally synthesized Curiosity answer is submitted as `synthesized` external knowledge whose `parent_memory_ids` are the already-learned public source memories.
+5. The locally synthesized Curiosity answer is submitted as `import_kind=derived` external knowledge whose `parent_memory_ids` are the already-learned public source memories. This matches the Memoria.ia contract that only derived external knowledge may carry parent IDs.
 6. OFF.IA requests a flush through Memoria.ia. A flush failure is reported separately and does not discard the Curiosity answer.
 7. Later normal Memoria.ia resolution can reuse the learned public knowledge while OFF.IA is offline.
 
@@ -61,7 +61,7 @@ The Android app contains no BDR-specific persistence code for Curiosity.
 
 The consumer integration is gated by:
 
-- Kotlin unit coverage for source-first learning and synthesized parent lineage;
+- Kotlin unit coverage for source-first learning, derived parent lineage and flush-failure isolation;
 - Android arm64-v8a build/link against the pinned Memoria.ia post-v1 runtime;
 - existing Memoria.ia native tests for persistence, restart, provenance, deduplication, conflict handling and offline resolution.
 
