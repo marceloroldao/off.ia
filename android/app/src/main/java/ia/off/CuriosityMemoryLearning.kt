@@ -11,6 +11,14 @@ data class CuriosityMemoryLearningReport(
 ) {
     val learned: Boolean
         get() = storedMemoryIds.isNotEmpty()
+
+    fun toPublicKnowledgeAudit() = PublicKnowledgeAudit(
+        sourceMemoryIds = sourceMemoryIds,
+        storedMemoryIds = storedMemoryIds,
+        synthesisStored = synthesisStored,
+        failedSourceCount = failedSourceCount,
+        flushFailed = flushFailed,
+    )
 }
 
 suspend fun learnCuriosityResult(
