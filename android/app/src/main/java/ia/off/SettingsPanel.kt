@@ -121,6 +121,11 @@ fun SettingsPanel(
                 }
             }
 
+            ImproveSettingsSection(
+                settings = settings,
+                onSettingsChanged = { update(it) },
+            )
+
             SettingsSection("Modelos e rede") {
                 SettingsSwitch(
                     title = "Baixar modelo padrão automaticamente",
@@ -136,7 +141,7 @@ fun SettingsPanel(
                 )
                 SettingsSwitch(
                     title = "Bloquear rede depois de baixar o modelo",
-                    subtitle = "Preferência reservada para impedir Curiosidade e provedores externos após o onboarding.",
+                    subtitle = "Quando ativado, Curiosidade e Melhorar por nuvem ficam bloqueados após o onboarding.",
                     checked = settings.blockNetworkAfterModelDownload,
                     onCheckedChange = { update(settings.copy(blockNetworkAfterModelDownload = it)) },
                 )
@@ -145,12 +150,12 @@ fun SettingsPanel(
             SettingsSection("Privacidade") {
                 SettingsSwitch(
                     title = "Confirmar antes de enviar para nuvem",
-                    subtitle = "OpenAI/Gemini nunca receberão dados sem a política configurada pelo usuário.",
+                    subtitle = "Quando ativado, OFF.IA pede confirmação antes de cada melhoria via OpenAI/Gemini.",
                     checked = settings.confirmBeforeCloud,
                     onCheckedChange = { update(settings.copy(confirmBeforeCloud = it)) },
                 )
                 Text("Internet: permitida somente para recursos online", style = MaterialTheme.typography.labelMedium)
-                Text("Inferência: llama.cpp local", style = MaterialTheme.typography.labelMedium)
+                Text("Inferência principal: llama.cpp local", style = MaterialTheme.typography.labelMedium)
                 Text("Memória: Memoria.ia + BDR local", style = MaterialTheme.typography.labelMedium)
             }
 
