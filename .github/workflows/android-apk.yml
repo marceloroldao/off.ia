@@ -72,6 +72,9 @@ jobs:
         with:
           gradle-version: '8.14.3'
 
+      - name: Run Curiosity public-memory unit tests
+        run: gradle -p android :app:testDebugUnitTest --no-daemon --stacktrace
+
       - name: Build full offline debug APK
         run: gradle -p android :app:assembleDebug --no-daemon --stacktrace
 
