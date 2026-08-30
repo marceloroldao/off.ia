@@ -1,8 +1,14 @@
+<p align="center">
+  <img src="assets/branding/offia-logo-original-512.png" alt="OFF.IA logo" width="420">
+</p>
+
 # OFF.IA
 
 Offline-first AI chat integration layer for **Memoria.ia + Resolutive-DB (BDR) + llama.cpp**.
 
 > Memoria.ia owns memory and state. BDR owns persistence. llama.cpp provides local language-model inference.
+
+Brand assets: [`assets/branding/`](assets/branding/)
 
 ## Status
 

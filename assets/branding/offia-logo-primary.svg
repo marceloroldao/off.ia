@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-labelledby="title desc">
+  <title id="title">OFF.IA</title>
+  <desc id="desc">OFF.IA official logo: orbital resolutive symbol, local memory nucleus and the tagline IA OFFLINE, PRIVADA, LOCAL, SUA.</desc>
+  <defs>
+    <linearGradient id="ring" x1="0" y1="1" x2="1" y2="0">
+      <stop offset="0" stop-color="#082c67"/><stop offset="0.52" stop-color="#0b67b5"/><stop offset="1" stop-color="#13d8e5"/>
+    </linearGradient>
+    <radialGradient id="core" cx="68%" cy="25%" r="78%">
+      <stop offset="0" stop-color="#16d8e4"/><stop offset="0.45" stop-color="#0879bf"/><stop offset="1" stop-color="#06265f"/>
+    </radialGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="#ffffff"/>
+  <g transform="translate(512 332)">
+    <circle r="200" fill="none" stroke="url(#ring)" stroke-width="32" stroke-linecap="round" stroke-dasharray="580 142 220 314" transform="rotate(-42)"/>
+    <circle r="122" fill="none" stroke="url(#ring)" stroke-width="18" stroke-linecap="round" stroke-dasharray="445 104 102 116" transform="rotate(-39)"/>
+    <circle r="29" fill="url(#core)"/>
+    <g fill="#11cfdf"><circle cx="151" cy="-83" r="7"/><circle cx="170" cy="-101" r="6"/><circle cx="188" cy="-119" r="5"/></g>
+    <g fill="#082c67"><circle cx="-145" cy="112" r="7"/><circle cx="-165" cy="130" r="6"/><circle cx="-184" cy="148" r="5"/></g>
+  </g>
+  <g font-family="DejaVu Sans, Arial, Helvetica, sans-serif">
+    <text x="238" y="680" font-size="140" font-weight="800" letter-spacing="1" fill="#071a3c">OFF</text>
+    <circle cx="558" cy="651" r="10" fill="#081e49"/>
+    <text x="590" y="680" font-size="140" font-weight="300" letter-spacing="-3" fill="#0e8cc8">IA</text>
+    <text x="512" y="746" text-anchor="middle" font-size="20" font-weight="400" letter-spacing="5" fill="#263552">IA OFFLINE <tspan fill="#10cddd">•</tspan> PRIVADA <tspan fill="#10cddd">•</tspan> LOCAL <tspan fill="#10cddd">•</tspan> SUA</text>
+  </g>
+</svg>
