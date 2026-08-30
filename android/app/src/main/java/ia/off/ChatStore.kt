@@ -153,7 +153,7 @@ class ChatStore(context: Context) {
                 val message = session.messages[index]
                 val generation = message.generation ?: return@forEach
                 if (generation.source != ResponseSource.CURIOSITY) return@forEach
-                val pending = CuriosityPublicAuditBridge.take(message.id) ?: return@forEach
+                val pending = CuriosityPublicAuditBridge.peek(message.id) ?: return@forEach
                 if (generation.publicKnowledge == null) {
                     session.messages[index] = message.copy(
                         generation = generation.copy(publicKnowledge = pending),
