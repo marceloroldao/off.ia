@@ -26,6 +26,30 @@ data class MemoryLearnResult(
     val memoryIds: List<String> = emptyList(),
 )
 
+data class ExternalKnowledgeSource(
+    val content: String,
+    val sourceUrl: String,
+    val sourceDomain: String,
+    val sourceTitle: String,
+    val acquiredTime: String,
+    val sourceExcerpt: String = "",
+    val providerId: String = "offia-curiosity",
+    val importKind: String = "imported",
+    val validationConfidence: Double = 0.85,
+    val requestId: String = "",
+    val sessionId: String = "",
+    val namespace: String = "",
+    val parentMemoryIds: List<String> = emptyList(),
+)
+
+data class ExternalKnowledgeLearnResult(
+    val memoryIds: List<String> = emptyList(),
+    val deduplicated: Boolean = false,
+    val sourceAttached: Boolean = false,
+    val sourceCount: Int = 0,
+    val sourceType: String? = null,
+)
+
 /**
  * Android-side contract consumed by OFF.IA.
  *
@@ -42,6 +66,13 @@ interface MemoryGateway {
     ): MemoryResolution
 
     suspend fun learnTurn(userText: String, assistantText: String): MemoryLearnResult
+
+    /**
+     * Delegates approved public/external knowledge to Memoria.ia.
+     * OFF.IA supplies acquisition metadata only; authority, deduplication,
+     * conflict handling, provenance and BDR persistence remain Memoria.ia-owned.
+     */
+    suspend fun learnExternalKnowledge(source: ExternalKnowledgeSource): ExternalKnowledgeLearnResult
 
     /** Returns one read-only page from Memoria.ia's versioned diagnostic export. */
     suspend fun exportSnapshotPage(
@@ -64,6 +95,9 @@ object UnavailableMemoryGateway : MemoryGateway {
 
     override suspend fun learnTurn(userText: String, assistantText: String) =
         MemoryLearnResult()
+
+    override suspend fun learnExternalKnowledge(source: ExternalKnowledgeSource) =
+        ExternalKnowledgeLearnResult()
 
     override suspend fun exportSnapshotPage(turnOffset: Int, episodeOffset: Int, limit: Int): String? = null
 
