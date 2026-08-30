@@ -42,7 +42,12 @@ fun MessageCard(
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
     val isUser = message.role == "Você"
-    val isCuriosity = message.generation?.source == ResponseSource.CURIOSITY
+    val responseSource = message.generation?.source
+    val isLocal = responseSource == ResponseSource.LOCAL
+    val isCuriosity = responseSource == ResponseSource.CURIOSITY
+    val isImproved = responseSource == ResponseSource.OPENAI ||
+        responseSource == ResponseSource.GEMINI ||
+        responseSource == ResponseSource.MA2A
     val publicSources = message.generation?.publicSources.orEmpty()
     var memoryExpanded by remember(message.id) { mutableStateOf(false) }
     var sourcesExpanded by remember(message.id) { mutableStateOf(false) }
@@ -60,10 +65,22 @@ fun MessageCard(
                 text = when {
                     isUser -> "Você"
                     isCuriosity -> "OFF.IA • Curiosidade"
+                    isImproved -> {
+                        val provider = when (responseSource) {
+                            ResponseSource.OPENAI -> "OpenAI"
+                            ResponseSource.GEMINI -> "Gemini"
+                            ResponseSource.MA2A -> "MA2A"
+                            else -> "Externa"
+                        }
+                        "OFF.IA • Melhorada · $provider"
+                    }
                     else -> "OFF.IA"
                 },
                 style = MaterialTheme.typography.labelMedium,
             )
+            message.generation?.modelName?.takeIf { isImproved && it.isNotBlank() }?.let { model ->
+                Text(model, style = MaterialTheme.typography.labelSmall)
+            }
             Surface(
                 tonalElevation = if (isUser) 1.dp else 0.dp,
                 shape = MaterialTheme.shapes.large,
@@ -91,15 +108,15 @@ fun MessageCard(
                         }
                     }
                     TextButton(
-                        enabled = onCuriosity != null && !busy && !isCuriosity,
+                        enabled = onCuriosity != null && !busy && isLocal,
                         onClick = { onCuriosity?.invoke(message.id) },
                     ) { Text("Curiosidade") }
                     TextButton(
-                        enabled = onImprove != null && !busy,
+                        enabled = onImprove != null && !busy && isLocal,
                         onClick = { onImprove?.invoke(message.id) },
                     ) { Text("Melhorar") }
                     TextButton(
-                        enabled = onRegenerate != null && !busy && !isCuriosity,
+                        enabled = onRegenerate != null && !busy && isLocal,
                         onClick = { onRegenerate?.invoke(message.id) },
                     ) { Text("Regenerar") }
                     Box {
@@ -114,7 +131,11 @@ fun MessageCard(
                                     moreExpanded = false
                                     sharePlainText(
                                         context = context.applicationContext,
-                                        subject = if (isCuriosity) "Curiosidade do OFF.IA" else "Resposta do OFF.IA",
+                                        subject = when {
+                                            isCuriosity -> "Curiosidade do OFF.IA"
+                                            isImproved -> "Resposta melhorada do OFF.IA"
+                                            else -> "Resposta do OFF.IA"
+                                        },
                                         text = message.toShareText(),
                                     )
                                 },
