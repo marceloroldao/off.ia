@@ -30,11 +30,21 @@ data class ImprovementRecord(
     val createdAt: Long = System.currentTimeMillis(),
 )
 
+data class PublicKnowledgeAudit(
+    val knowledgeClass: String = "external_public",
+    val sourceMemoryIds: List<String> = emptyList(),
+    val storedMemoryIds: List<String> = emptyList(),
+    val synthesisStored: Boolean = false,
+    val failedSourceCount: Int = 0,
+    val flushFailed: Boolean = false,
+)
+
 data class GenerationMetadata(
     val source: ResponseSource = ResponseSource.LOCAL,
     val modelName: String? = null,
     val latencyMs: Long? = null,
     val publicSources: List<CuriositySource> = emptyList(),
+    val publicKnowledge: PublicKnowledgeAudit? = null,
 )
 
 data class ChatMessage(
