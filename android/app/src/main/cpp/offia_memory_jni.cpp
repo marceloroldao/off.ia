@@ -174,6 +174,32 @@ Java_ia_off_NativeMemoryGateway_nativeLearn(JNIEnv* env, jobject, jlong handle, 
 }
 
 extern "C" JNIEXPORT jstring JNICALL
+Java_ia_off_NativeMemoryGateway_nativeLearnExternal(JNIEnv* env, jobject, jlong handle, jstring request_json) {
+    auto* runtime = from_handle(handle);
+    if (!runtime) {
+        throw_illegal_state(env, "Memoria.ia runtime is closed");
+        return nullptr;
+    }
+    try {
+        const std::string request = from_jstring(env, request_json);
+        memoria_mobile_buffer in{
+            reinterpret_cast<const uint8_t*>(request.data()), request.size()
+        };
+        memoria_mobile_buffer out{nullptr, 0};
+        const auto status = memoria_mobile_learn_external_knowledge_json(runtime, in, &out);
+        const std::string response = take_response(out);
+        if (status != MEMORIA_MOBILE_OK) {
+            throw_illegal_state(env, "Memoria.ia rejeitou conhecimento público externo");
+            return nullptr;
+        }
+        return env->NewStringUTF(response.c_str());
+    } catch (const std::exception& e) {
+        throw_illegal_state(env, e.what());
+        return nullptr;
+    }
+}
+
+extern "C" JNIEXPORT jstring JNICALL
 Java_ia_off_NativeMemoryGateway_nativeExport(JNIEnv* env, jobject, jlong handle, jstring request_json) {
     auto* runtime = from_handle(handle);
     if (!runtime) {

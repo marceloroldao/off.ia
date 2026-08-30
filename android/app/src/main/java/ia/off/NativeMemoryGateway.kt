@@ -57,15 +57,7 @@ class NativeMemoryGateway(context: Context) : MemoryGateway, AutoCloseable {
             "UNRESOLVED" -> MemoryStatus.UNRESOLVED
             else -> MemoryStatus.UNAVAILABLE
         }
-        val idsJson = json.optJSONArray("memory_ids")
-        val memoryIds = buildList {
-            if (idsJson != null) {
-                for (i in 0 until idsJson.length()) {
-                    val id = idsJson.optString(i)
-                    if (id.isNotBlank()) add(id)
-                }
-            }
-        }
+        val memoryIds = parseIds(json.optJSONArray("memory_ids"))
         val context = json.optString("selected_context")
         val confidence = if (json.has("confidence")) json.optDouble("confidence") else Double.NaN
 
@@ -82,16 +74,54 @@ class NativeMemoryGateway(context: Context) : MemoryGateway, AutoCloseable {
     override suspend fun learnTurn(userText: String, assistantText: String): MemoryLearnResult =
         withContext(Dispatchers.IO) {
             val json = JSONObject(nativeLearn(requireHandle(), userText, assistantText))
-            val idsJson = json.optJSONArray("memory_ids")
-            val ids = buildList {
-                if (idsJson != null) {
-                    for (i in 0 until idsJson.length()) {
-                        val id = idsJson.optString(i)
-                        if (id.isNotBlank()) add(id)
-                    }
-                }
+            MemoryLearnResult(memoryIds = parseIds(json.optJSONArray("memory_ids")))
+        }
+
+    override suspend fun learnExternalKnowledge(source: ExternalKnowledgeSource): ExternalKnowledgeLearnResult =
+        withContext(Dispatchers.IO) {
+            require(source.content.isNotBlank()) { "Conhecimento público vazio" }
+            require(source.sourceUrl.isNotBlank()) { "URL de origem pública vazia" }
+            require(source.sourceDomain.isNotBlank()) { "Domínio de origem pública vazio" }
+            require(source.sourceTitle.isNotBlank()) { "Título de origem pública vazio" }
+            require(source.acquiredTime.isNotBlank()) { "Data de aquisição pública vazia" }
+            require(source.validationConfidence in 0.0..1.0) { "Confiança pública deve estar entre 0 e 1" }
+            require(source.importKind in setOf("imported", "synthesized", "derived")) {
+                "Tipo de importação pública inválido"
             }
-            MemoryLearnResult(memoryIds = ids)
+            if (source.importKind == "derived") {
+                require(source.parentMemoryIds.isNotEmpty()) { "Conhecimento público derivado requer memória-pai" }
+                require(source.parentMemoryIds.all { it.isNotBlank() }) { "ID de memória-pai público inválido" }
+            } else {
+                require(source.parentMemoryIds.isEmpty()) { "Somente conhecimento público derivado aceita memória-pai" }
+            }
+
+            val request = JSONObject().apply {
+                put("content", source.content)
+                put("source_class", "external_public")
+                put("source_url", source.sourceUrl)
+                put("source_domain", source.sourceDomain)
+                put("source_title", source.sourceTitle)
+                put("acquired_time", source.acquiredTime)
+                put("source_excerpt", source.sourceExcerpt)
+                put("provider_id", source.providerId)
+                put("import_kind", source.importKind)
+                put("validation_confidence", source.validationConfidence)
+                put("request_id", source.requestId)
+                put("session_id", source.sessionId)
+                put("namespace", source.namespace)
+                put("parent_memory_ids", JSONArray(source.parentMemoryIds))
+            }
+
+            val json = JSONObject(nativeLearnExternal(requireHandle(), request.toString()))
+            val ids = parseIds(json.optJSONArray("stored_memory_ids"))
+            check(ids.isNotEmpty()) { "Memoria.ia não retornou memory_id para conhecimento público" }
+            ExternalKnowledgeLearnResult(
+                memoryIds = ids,
+                deduplicated = json.optBoolean("deduplicated", false),
+                sourceAttached = json.optBoolean("source_attached", false),
+                sourceCount = json.optInt("source_count", 0),
+                sourceType = json.optString("source_type").takeIf { it.isNotBlank() },
+            )
         }
 
     override suspend fun exportSnapshotPage(
@@ -126,10 +156,20 @@ class NativeMemoryGateway(context: Context) : MemoryGateway, AutoCloseable {
         check(it != 0L) { "Memoria.ia runtime fechado" }
     }
 
+    private fun parseIds(array: JSONArray?): List<String> = buildList {
+        if (array != null) {
+            for (i in 0 until array.length()) {
+                val id = array.optString(i)
+                if (id.isNotBlank()) add(id)
+            }
+        }
+    }
+
     private external fun nativeOpen(path: String): Long
     private external fun nativeClose(handle: Long)
     private external fun nativeResolve(handle: Long, requestJson: String): String
     private external fun nativeLearn(handle: Long, user: String, assistant: String): String
+    private external fun nativeLearnExternal(handle: Long, requestJson: String): String
     private external fun nativeExport(handle: Long, requestJson: String): String
     private external fun nativeFlush(handle: Long)
 }

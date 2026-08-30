@@ -524,8 +524,24 @@ fun OffiaChatScreen() {
                         publicSources = result.sources,
                     ),
                 )
+                val publicLearning = learnCuriosityResult(
+                    memory = memory,
+                    result = result,
+                    synthesis = messages[curiosityIndex].text,
+                    sessionId = activeSessionId,
+                    requestId = curiosityMessage.id,
+                )
                 saveWorkspace()
-                status = "Offline • Curiosidade concluída • ${result.sources.size} fonte(s)"
+                status = when {
+                    publicLearning.flushFailed ->
+                        "Offline • Curiosidade concluída • memória pública aguarda sincronização"
+                    publicLearning.learned ->
+                        "Offline • Curiosidade concluída • ${result.sources.size} fonte(s) • ${publicLearning.storedMemoryIds.size} memória(s) pública(s)"
+                    publicLearning.failedSourceCount > 0 ->
+                        "Offline • Curiosidade concluída • aprendizado público indisponível"
+                    else ->
+                        "Offline • Curiosidade concluída • ${result.sources.size} fonte(s)"
+                }
             } catch (_: CancellationException) {
                 if (answer.isEmpty()) {
                     messages[curiosityIndex] = messages[curiosityIndex].copy(text = "Curiosidade interrompida.")

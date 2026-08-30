@@ -35,11 +35,11 @@ jobs:
           git -C android/vendor/llama.cpp checkout --detach ca3d5a3e10d53f7ea672cb9b6178faca3e2807bc
           python3 android/scripts/patch_llama_android_diagnostics.py
 
-      - name: Checkout pinned Memoria.ia mobile runtime
+      - name: Checkout pinned Memoria.ia post-v1 mobile runtime
         uses: actions/checkout@v6
         with:
           repository: marceloroldao/memoria.ia
-          ref: 3cf3587ae2127e88637414defd79e620c492383c
+          ref: e91eabeebdee11472a1ea09ef7ea51ca2aeb3fa7
           path: android/vendor/memoria.ia
 
       - name: Checkout pinned Resolutive-DB Android ABI
@@ -71,6 +71,9 @@ jobs:
         uses: gradle/actions/setup-gradle@v5
         with:
           gradle-version: '8.14.3'
+
+      - name: Run Curiosity public-memory unit tests
+        run: gradle -p android :app:testDebugUnitTest --no-daemon --stacktrace
 
       - name: Build full offline debug APK
         run: gradle -p android :app:assembleDebug --no-daemon --stacktrace
