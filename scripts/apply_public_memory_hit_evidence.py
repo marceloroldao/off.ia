@@ -1,0 +1,194 @@
+from pathlib import Path
+
+root = Path(__file__).resolve().parents[1]
+
+helper = root / "android/app/src/main/java/ia/off/PublicMemoryEvidence.kt"
+helper.write_text(
+    '''package ia.off
+
+internal fun externalPublicMemoryIds(sessions: Iterable<ChatSession>): Set<String> {
+    val ids = linkedSetOf<String>()
+    sessions.forEach { session ->
+        session.messages.forEach { message ->
+            val audit = message.generation?.publicKnowledge ?: return@forEach
+            if (audit.knowledgeClass != "external_public") return@forEach
+            audit.storedMemoryIds.filterTo(ids) { it.isNotBlank() }
+        }
+    }
+    return ids
+}
+
+internal fun matchExternalPublicMemoryIds(
+    resolvedMemoryIds: Iterable<String>,
+    sessions: Iterable<ChatSession>,
+): List<String> {
+    val knownPublicIds = externalPublicMemoryIds(sessions)
+    if (knownPublicIds.isEmpty()) return emptyList()
+    val matched = linkedSetOf<String>()
+    resolvedMemoryIds.forEach { id ->
+        if (id.isNotBlank() && id in knownPublicIds) matched += id
+    }
+    return matched.toList()
+}
+''',
+    encoding="utf-8",
+)
+
+test = root / "android/app/src/test/java/ia/off/PublicMemoryEvidenceTest.kt"
+test.write_text(
+    '''package ia.off
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class PublicMemoryEvidenceTest {
+    @Test
+    fun matchesOnlyResolvedIdsPreviouslyAuditedAsExternalPublic() {
+        val sessions = listOf(
+            ChatSession(
+                id = "session-public",
+                title = "Public",
+                messages = mutableListOf(
+                    ChatMessage(
+                        role = "OFF.IA",
+                        text = "Curiosity answer",
+                        generation = GenerationMetadata(
+                            source = ResponseSource.CURIOSITY,
+                            publicKnowledge = PublicKnowledgeAudit(
+                                storedMemoryIds = listOf("pub-1", "pub-2"),
+                            ),
+                        ),
+                    ),
+                ),
+                updatedAt = 1L,
+            ),
+        )
+
+        val matched = matchExternalPublicMemoryIds(
+            resolvedMemoryIds = listOf("local-1", "pub-2", "pub-1", "pub-2"),
+            sessions = sessions,
+        )
+
+        assertEquals(listOf("pub-2", "pub-1"), matched)
+    }
+
+    @Test
+    fun ignoresNonExternalAuditClassesAndBlankIds() {
+        val sessions = listOf(
+            ChatSession(
+                id = "session-private",
+                title = "Private",
+                messages = mutableListOf(
+                    ChatMessage(
+                        role = "OFF.IA",
+                        text = "Other answer",
+                        generation = GenerationMetadata(
+                            source = ResponseSource.CURIOSITY,
+                            publicKnowledge = PublicKnowledgeAudit(
+                                knowledgeClass = "not_external_public",
+                                storedMemoryIds = listOf("pub-wrong", ""),
+                            ),
+                        ),
+                    ),
+                ),
+                updatedAt = 2L,
+            ),
+        )
+
+        assertTrue(matchExternalPublicMemoryIds(listOf("pub-wrong"), sessions).isEmpty())
+        assertTrue(externalPublicMemoryIds(sessions).isEmpty())
+    }
+}
+''',
+    encoding="utf-8",
+)
+
+chat_store = root / "android/app/src/main/java/ia/off/ChatStore.kt"
+text = chat_store.read_text(encoding="utf-8")
+old = '''    @Synchronized
+    fun save(workspace: ChatWorkspace) {
+'''
+new = '''    @Synchronized
+    fun externalPublicMemoryIdsUsed(memoryIds: List<String>): List<String> {
+        if (memoryIds.isEmpty()) return emptyList()
+        val workspace = readWorkspaceWithoutRewrite() ?: return emptyList()
+        return matchExternalPublicMemoryIds(memoryIds, workspace.sessions)
+    }
+
+    @Synchronized
+    fun save(workspace: ChatWorkspace) {
+'''
+if old not in text:
+    raise SystemExit("ChatStore insertion anchor not found")
+chat_store.write_text(text.replace(old, new, 1), encoding="utf-8")
+
+card = root / "android/app/src/main/java/ia/off/MessageCard.kt"
+text = card.read_text(encoding="utf-8")
+old = '''    val publicKnowledge = message.generation?.publicKnowledge
+        ?: if (isCuriosity) CuriosityPublicAuditBridge.peek(message.id) else null
+    val hasPublicEvidence = publicSources.isNotEmpty() || publicKnowledge != null
+'''
+new = '''    val publicKnowledge = message.generation?.publicKnowledge
+        ?: if (isCuriosity) CuriosityPublicAuditBridge.peek(message.id) else null
+    val externalPublicMemoryIdsUsed = remember(message.id, message.memory?.memoryIds) {
+        chatStore.externalPublicMemoryIdsUsed(message.memory?.memoryIds.orEmpty())
+    }
+    val hasPublicEvidence = publicSources.isNotEmpty() || publicKnowledge != null
+'''
+if old not in text:
+    raise SystemExit("MessageCard evidence anchor not found")
+text = text.replace(old, new, 1)
+
+old = '''            if (!isUser && memoryExpanded) {
+                ResponseMemoryPanel(message.memory)
+            }
+'''
+new = '''            if (!isUser && memoryExpanded) {
+                ResponseMemoryPanel(
+                    memory = message.memory,
+                    externalPublicMemoryIdsUsed = externalPublicMemoryIdsUsed,
+                )
+            }
+'''
+if old not in text:
+    raise SystemExit("MessageCard memory panel call anchor not found")
+text = text.replace(old, new, 1)
+
+old = '''private fun ResponseMemoryPanel(memory: ResponseMemoryMetadata?) {
+'''
+new = '''private fun ResponseMemoryPanel(
+    memory: ResponseMemoryMetadata?,
+    externalPublicMemoryIdsUsed: List<String> = emptyList(),
+) {
+'''
+if old not in text:
+    raise SystemExit("ResponseMemoryPanel signature anchor not found")
+text = text.replace(old, new, 1)
+
+old = '''                Text(
+                    "Trajetória: ${if (memory.trajectoryUsed) "usada" else "não usada"} • janela=${memory.conversationWindowCount}",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                Text("Contexto selecionado: ${memory.selectedContext.length} caracteres", style = MaterialTheme.typography.bodySmall)
+'''
+new = '''                Text(
+                    "Trajetória: ${if (memory.trajectoryUsed) "usada" else "não usada"} • janela=${memory.conversationWindowCount}",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                if (externalPublicMemoryIdsUsed.isNotEmpty()) {
+                    HorizontalDivider()
+                    Text(
+                        "Conhecimento público usado: external_public",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    Text(
+                        "IDs públicos usados: ${externalPublicMemoryIdsUsed.joinToString()}",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                Text("Contexto selecionado: ${memory.selectedContext.length} caracteres", style = MaterialTheme.typography.bodySmall)
+'''
+if old not in text:
+    raise SystemExit("ResponseMemoryPanel body anchor not found")
+card.write_text(text.replace(old, new, 1), encoding="utf-8")
