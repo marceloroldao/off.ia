@@ -80,8 +80,12 @@ class NativeMemoryGateway(context: Context) : MemoryGateway, AutoCloseable {
     override suspend fun learnExternalKnowledge(source: ExternalKnowledgeSource): ExternalKnowledgeLearnResult =
         withContext(Dispatchers.IO) {
             require(source.content.isNotBlank()) { "Conhecimento público vazio" }
-            require(source.sourceUrl.isNotBlank()) { "URL de origem pública vazia" }
-            require(source.sourceDomain.isNotBlank()) { "Domínio de origem pública vazio" }
+            require(source.sourceUrl.startsWith("https://") || source.sourceUrl.startsWith("http://")) {
+                "URL de origem pública deve usar http(s)"
+            }
+            require(source.sourceDomain.isNotBlank() && source.sourceDomain.none { it.isWhitespace() || it == '/' || it == '\\' }) {
+                "Domínio de origem pública inválido"
+            }
             require(source.sourceTitle.isNotBlank()) { "Título de origem pública vazio" }
             require(source.acquiredTime.isNotBlank()) { "Data de aquisição pública vazia" }
             require(source.validationConfidence in 0.0..1.0) { "Confiança pública deve estar entre 0 e 1" }
@@ -96,7 +100,7 @@ class NativeMemoryGateway(context: Context) : MemoryGateway, AutoCloseable {
             }
 
             val request = JSONObject().apply {
-                put("content", source.content)
+                // Keep contract/provenance keys ahead of untrusted raw Web content.
                 put("source_class", "external_public")
                 put("source_url", source.sourceUrl)
                 put("source_domain", source.sourceDomain)
@@ -110,6 +114,7 @@ class NativeMemoryGateway(context: Context) : MemoryGateway, AutoCloseable {
                 put("session_id", source.sessionId)
                 put("namespace", source.namespace)
                 put("parent_memory_ids", JSONArray(source.parentMemoryIds))
+                put("content", source.content)
             }
 
             val json = JSONObject(nativeLearnExternal(requireHandle(), request.toString()))
