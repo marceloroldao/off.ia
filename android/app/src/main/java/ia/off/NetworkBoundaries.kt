@@ -43,6 +43,8 @@ data class CuriositySource(
     val url: String,
     val domain: String,
     val excerpt: String? = null,
+    /** Full plaintext public content actually read by the provider. */
+    val rawContent: String? = null,
 )
 
 data class CuriosityRequest(
@@ -58,9 +60,8 @@ data class CuriosityResult(
 
 /**
  * Public-web acquisition only. A provider returns source material + provenance
- * to OFF.IA for local synthesis. It must never mutate Memoria.ia or BDR directly;
- * promotion of public knowledge into another memory/network layer is a separate,
- * explicit policy decision.
+ * to OFF.IA. OFF.IA must submit the public evidence to Memoria.ia before final
+ * local rendering. Providers never mutate Memoria.ia or BDR directly.
  */
 interface CuriosityProvider {
     val available: Boolean

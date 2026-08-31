@@ -40,7 +40,7 @@ class WikipediaCuriosityProvider : CuriosityProvider {
             "https://$language.wikipedia.org/w/api.php" +
                 "?action=query&format=json&formatversion=2" +
                 "&generator=search&gsrsearch=$encoded&gsrlimit=$limit" +
-                "&prop=extracts%7Cinfo&exintro=1&explaintext=1&inprop=url&redirects=1"
+                "&prop=extracts%7Cinfo&explaintext=1&inprop=url&redirects=1"
 
         val connection = (URL(endpoint).openConnection() as HttpURLConnection).apply {
             connectTimeout = 12_000
@@ -71,6 +71,7 @@ class WikipediaCuriosityProvider : CuriosityProvider {
                             url = fullUrl,
                             domain = "$language.wikipedia.org",
                             excerpt = extract.take(2_000),
+                            rawContent = extract,
                         ),
                     )
                 }
@@ -100,6 +101,7 @@ fun materializeCuriosityPrompt(
         - Quando útil, indique as fontes como [1], [2], etc.
         - Responda em português, de forma clara e concisa.
         - Não transforme esse material público em memória pessoal do usuário.
+        - A memória pública já foi persistida pela Memoria.ia; sua tarefa é apenas verbalizar a resposta final.
 
         Pergunta original:
         $userQuestion

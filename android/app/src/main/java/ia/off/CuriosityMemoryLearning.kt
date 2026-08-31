@@ -27,10 +27,6 @@ data class CuriosityMemoryLearningReport(
  * Small process-local presentation cache for the Curiosity audit returned by
  * Memoria.ia. It is not authoritative memory: Memoria.ia + BDR own memory and
  * ChatStore owns the durable UI transcript copy.
- *
- * Keeping a bounded cache lets the currently rendered Curiosity card expose the
- * audit immediately after learning, before a chat reload reconstructs it from
- * the durable workspace.
  */
 internal object CuriosityPublicAuditBridge {
     private const val MAX_ENTRIES = 128
@@ -54,10 +50,16 @@ internal object CuriosityPublicAuditBridge {
     fun clearForTests() = pending.clear()
 }
 
-suspend fun learnCuriosityResult(
+/**
+ * Persists public source evidence before any LLM rendering.
+ *
+ * The full plaintext content actually read by the Curiosity provider is the
+ * authoritative imported payload. The short excerpt is only presentation /
+ * prompt material. LLM synthesis is intentionally not persisted here.
+ */
+suspend fun learnCuriositySources(
     memory: MemoryGateway,
     result: CuriosityResult,
-    synthesis: String,
     sessionId: String,
     requestId: String,
     acquiredTime: String = Instant.now().toString(),
@@ -66,22 +68,24 @@ suspend fun learnCuriosityResult(
 
     val sourceIds = linkedSetOf<String>()
     val storedIds = linkedSetOf<String>()
-    var primaryLearnedSource: CuriositySource? = null
     var failedSources = 0
     var firstFailureReason: String? = null
 
     result.sources.forEachIndexed { index, source ->
+        val raw = source.rawContent?.trim().orEmpty()
         val excerpt = source.excerpt?.trim().orEmpty()
-        if (excerpt.isBlank()) return@forEachIndexed
+        val content = raw.ifBlank { excerpt }
+        if (content.isBlank()) return@forEachIndexed
+
         try {
             val learned = memory.learnExternalKnowledge(
                 ExternalKnowledgeSource(
-                    content = excerpt,
+                    content = content,
                     sourceUrl = source.url,
                     sourceDomain = source.domain,
                     sourceTitle = source.title,
                     acquiredTime = acquiredTime,
-                    sourceExcerpt = excerpt.take(1_200),
+                    sourceExcerpt = excerpt.ifBlank { content.take(1_200) }.take(1_200),
                     providerId = "wikipedia-curiosity",
                     importKind = "imported",
                     validationConfidence = 0.85,
@@ -90,7 +94,6 @@ suspend fun learnCuriosityResult(
                 ),
             )
             if (learned.memoryIds.isNotEmpty()) {
-                if (primaryLearnedSource == null) primaryLearnedSource = source
                 sourceIds += learned.memoryIds
                 storedIds += learned.memoryIds
             }
@@ -102,45 +105,11 @@ suspend fun learnCuriosityResult(
         }
     }
 
-    var synthesisStored = false
-    val synthesized = synthesis.trim()
-    val primarySource = primaryLearnedSource
-    if (synthesized.isNotBlank() && primarySource != null && sourceIds.isNotEmpty()) {
-        try {
-            val learned = memory.learnExternalKnowledge(
-                ExternalKnowledgeSource(
-                    content = synthesized,
-                    sourceUrl = primarySource.url,
-                    sourceDomain = primarySource.domain,
-                    sourceTitle = primarySource.title,
-                    acquiredTime = acquiredTime,
-                    sourceExcerpt = primarySource.excerpt.orEmpty().trim().take(1_200),
-                    providerId = "offia-curiosity",
-                    importKind = "derived",
-                    validationConfidence = 0.80,
-                    requestId = "$requestId:synthesis",
-                    sessionId = sessionId,
-                    parentMemoryIds = sourceIds.toList(),
-                ),
-            )
-            storedIds += learned.memoryIds
-            synthesisStored = learned.memoryIds.isNotEmpty()
-        } catch (e: Exception) {
-            if (firstFailureReason == null) {
-                firstFailureReason = e.message ?: e.javaClass.simpleName
-            }
-            // Imported public sources remain valid even if Memoria.ia rejects
-            // a derived synthesis conservatively.
-        }
-    }
-
     var flushFailed = false
     if (storedIds.isNotEmpty()) {
         try {
             memory.flush()
         } catch (_: Exception) {
-            // Curiosity itself remains usable. The UI can report that durable
-            // synchronization needs attention without discarding the answer.
             flushFailed = true
         }
     }
@@ -149,10 +118,33 @@ suspend fun learnCuriosityResult(
         sourceMemoryIds = sourceIds.toList(),
         storedMemoryIds = storedIds.toList(),
         failedSourceCount = failedSources,
-        synthesisStored = synthesisStored,
+        synthesisStored = false,
         flushFailed = flushFailed,
         failureReason = firstFailureReason,
     )
     CuriosityPublicAuditBridge.record(requestId, report.toPublicKnowledgeAudit())
     return report
+}
+
+/**
+ * Transitional compatibility wrapper. Synthesis is deliberately ignored:
+ * llama.cpp output is UI rendering, not authoritative external_public memory.
+ */
+suspend fun learnCuriosityResult(
+    memory: MemoryGateway,
+    result: CuriosityResult,
+    synthesis: String,
+    sessionId: String,
+    requestId: String,
+    acquiredTime: String = Instant.now().toString(),
+): CuriosityMemoryLearningReport {
+    @Suppress("UNUSED_VARIABLE")
+    val ignoredSynthesis = synthesis
+    return learnCuriositySources(
+        memory = memory,
+        result = result,
+        sessionId = sessionId,
+        requestId = requestId,
+        acquiredTime = acquiredTime,
+    )
 }
