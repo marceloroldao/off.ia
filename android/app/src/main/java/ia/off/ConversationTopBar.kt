@@ -53,6 +53,12 @@ fun ConversationTopBar(
     val context = LocalContext.current
     val downloadActive = modelDownloadState is ModelDownloadState.Downloading ||
         modelDownloadState is ModelDownloadState.Verifying
+    val routeLabel = if (status.contains("M2A2", ignoreCase = true)) {
+        "Online • M2A2"
+    } else {
+        "Offline • LLM local"
+    }
+
     var conversationsExpanded by remember { mutableStateOf(false) }
     var actionsExpanded by remember { mutableStateOf(false) }
     var renameDialogVisible by remember { mutableStateOf(false) }
@@ -62,176 +68,162 @@ fun ConversationTopBar(
     var renameText by remember(activeSession.id) { mutableStateOf(activeSession.title) }
 
     Surface(tonalElevation = 1.dp) {
-        Column(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .statusBarsPadding()
-                .padding(horizontal = 8.dp, vertical = 6.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
+                .padding(horizontal = 8.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                Box {
-                    TextButton(
-                        enabled = !busy,
-                        colors = ButtonDefaults.textButtonColors(contentColor = OffiaBlue),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
-                        onClick = { conversationsExpanded = true },
-                    ) { Text("☰", style = MaterialTheme.typography.titleLarge) }
-                    DropdownMenu(
-                        expanded = conversationsExpanded,
-                        onDismissRequest = { conversationsExpanded = false },
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text("＋ Nova conversa") },
-                            onClick = {
-                                conversationsExpanded = false
-                                onNewConversation()
-                            },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("⌕ Buscar conversas") },
-                            onClick = {
-                                conversationsExpanded = false
-                                searchDialogVisible = true
-                            },
-                        )
-                        sessions.sortedByDescending { it.updatedAt }.take(10).forEach { session ->
-                            DropdownMenuItem(
-                                text = {
-                                    Text(
-                                        text = if (session.id == activeSession.id) "✓ ${session.title}" else session.title,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                },
-                                onClick = {
-                                    conversationsExpanded = false
-                                    onSelectSession(session.id)
-                                },
-                            )
-                        }
-                    }
-                }
-
-                OffiaOrbitalSymbol()
-
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = activeSession.title,
-                        color = OffiaDeep,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                    Text(
-                        text = status,
-                        color = OffiaTextMuted,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.labelSmall,
-                    )
-                }
-
+            Box {
                 TextButton(
                     enabled = !busy,
                     colors = ButtonDefaults.textButtonColors(contentColor = OffiaBlue),
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
-                    onClick = onNewConversation,
-                ) { Text("＋", style = MaterialTheme.typography.titleLarge) }
-
-                Box {
-                    TextButton(
-                        enabled = !busy || downloadActive,
-                        colors = ButtonDefaults.textButtonColors(contentColor = OffiaBlue),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
-                        onClick = { actionsExpanded = true },
-                    ) { Text("⋮", style = MaterialTheme.typography.titleLarge) }
-                    DropdownMenu(expanded = actionsExpanded, onDismissRequest = { actionsExpanded = false }) {
+                    onClick = { conversationsExpanded = true },
+                ) { Text("☰", style = MaterialTheme.typography.titleLarge) }
+                DropdownMenu(
+                    expanded = conversationsExpanded,
+                    onDismissRequest = { conversationsExpanded = false },
+                ) {
+                    DropdownMenuItem(
+                        text = { Text("＋ Nova conversa") },
+                        onClick = {
+                            conversationsExpanded = false
+                            onNewConversation()
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("⌕ Buscar conversas") },
+                        onClick = {
+                            conversationsExpanded = false
+                            searchDialogVisible = true
+                        },
+                    )
+                    sessions.sortedByDescending { it.updatedAt }.take(10).forEach { session ->
                         DropdownMenuItem(
-                            text = { Text("Buscar conversas") },
-                            onClick = {
-                                actionsExpanded = false
-                                searchDialogVisible = true
-                            },
-                        )
-                        DropdownMenuItem(
-                            enabled = !busy,
-                            text = { Text("Renomear conversa") },
-                            onClick = {
-                                actionsExpanded = false
-                                renameText = activeSession.title
-                                renameDialogVisible = true
-                            },
-                        )
-                        DropdownMenuItem(
-                            enabled = !busy,
-                            text = { Text("Copiar conversa") },
-                            onClick = {
-                                actionsExpanded = false
-                                clipboard.setText(AnnotatedString(activeSession.toPlainText()))
-                                onCopiedConversation()
-                            },
-                        )
-                        DropdownMenuItem(
-                            enabled = !busy,
-                            text = { Text("Compartilhar conversa") },
-                            onClick = {
-                                actionsExpanded = false
-                                sharePlainText(
-                                    context = context.applicationContext,
-                                    subject = activeSession.title,
-                                    text = activeSession.toPlainText(),
+                            text = {
+                                Text(
+                                    text = if (session.id == activeSession.id) "✓ ${session.title}" else session.title,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
                                 )
                             },
-                        )
-                        DropdownMenuItem(
-                            enabled = memoryAvailable && !busy,
-                            text = { Text("Exportar Memoria.ia") },
                             onClick = {
-                                actionsExpanded = false
-                                onExportMemory()
-                            },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Configurações") },
-                            onClick = {
-                                actionsExpanded = false
-                                settingsVisible = true
-                            },
-                        )
-                        DropdownMenuItem(
-                            enabled = !busy,
-                            text = { Text("Excluir conversa") },
-                            onClick = {
-                                actionsExpanded = false
-                                deleteDialogVisible = true
+                                conversationsExpanded = false
+                                onSelectSession(session.id)
                             },
                         )
                     }
                 }
             }
 
-            modelSummary?.let {
+            OffiaOrbitalSymbol()
+
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = it,
+                    text = activeSession.title,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    style = MaterialTheme.typography.titleMedium,
+                )
+                Text(
+                    text = routeLabel,
                     color = OffiaTextMuted,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(start = 86.dp, end = 8.dp),
-                    style = MaterialTheme.typography.labelSmall,
+                    style = MaterialTheme.typography.labelMedium,
                 )
             }
 
-            if (downloadActive) {
+            TextButton(
+                enabled = !busy,
+                colors = ButtonDefaults.textButtonColors(contentColor = OffiaBlue),
+                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
+                onClick = onNewConversation,
+            ) { Text("＋", style = MaterialTheme.typography.titleLarge) }
+
+            Box {
                 TextButton(
+                    enabled = !busy || downloadActive,
                     colors = ButtonDefaults.textButtonColors(contentColor = OffiaBlue),
-                    modifier = Modifier.padding(start = 78.dp),
-                    onClick = onCancelModelDownload,
-                ) { Text("Cancelar download") }
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
+                    onClick = { actionsExpanded = true },
+                ) { Text("⋮", style = MaterialTheme.typography.titleLarge) }
+                DropdownMenu(expanded = actionsExpanded, onDismissRequest = { actionsExpanded = false }) {
+                    DropdownMenuItem(
+                        text = { Text("Buscar conversas") },
+                        onClick = {
+                            actionsExpanded = false
+                            searchDialogVisible = true
+                        },
+                    )
+                    DropdownMenuItem(
+                        enabled = !busy,
+                        text = { Text("Renomear conversa") },
+                        onClick = {
+                            actionsExpanded = false
+                            renameText = activeSession.title
+                            renameDialogVisible = true
+                        },
+                    )
+                    DropdownMenuItem(
+                        enabled = !busy,
+                        text = { Text("Copiar conversa") },
+                        onClick = {
+                            actionsExpanded = false
+                            clipboard.setText(AnnotatedString(activeSession.toPlainText()))
+                            onCopiedConversation()
+                        },
+                    )
+                    DropdownMenuItem(
+                        enabled = !busy,
+                        text = { Text("Compartilhar conversa") },
+                        onClick = {
+                            actionsExpanded = false
+                            sharePlainText(
+                                context = context.applicationContext,
+                                subject = activeSession.title,
+                                text = activeSession.toPlainText(),
+                            )
+                        },
+                    )
+                    DropdownMenuItem(
+                        enabled = memoryAvailable && !busy,
+                        text = { Text("Exportar Memoria.ia") },
+                        onClick = {
+                            actionsExpanded = false
+                            onExportMemory()
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Configurações") },
+                        onClick = {
+                            actionsExpanded = false
+                            settingsVisible = true
+                        },
+                    )
+                    DropdownMenuItem(
+                        enabled = !busy,
+                        text = { Text("Excluir conversa") },
+                        onClick = {
+                            actionsExpanded = false
+                            deleteDialogVisible = true
+                        },
+                    )
+                }
+            }
+        }
+    }
+
+    if (downloadActive) {
+        Surface(tonalElevation = 1.dp) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.End,
+            ) {
+                TextButton(onClick = onCancelModelDownload) { Text("Cancelar download") }
             }
         }
     }
