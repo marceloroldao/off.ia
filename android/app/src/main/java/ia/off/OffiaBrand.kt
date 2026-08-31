@@ -3,7 +3,9 @@ package ia.off
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
@@ -72,11 +74,20 @@ private val OffiaTypography = Typography(
     labelMedium = TextStyle(fontFamily = FontFamily.SansSerif, fontSize = 12.sp),
 )
 
+private val OffiaShapes = Shapes(
+    extraSmall = RoundedCornerShape(18.dp),
+    small = RoundedCornerShape(22.dp),
+    medium = RoundedCornerShape(26.dp),
+    large = RoundedCornerShape(30.dp),
+    extraLarge = RoundedCornerShape(34.dp),
+)
+
 @Composable
 fun OffiaTheme(content: @Composable () -> Unit) {
     MaterialTheme(
         colorScheme = if (isSystemInDarkTheme()) OffiaDarkColors else OffiaLightColors,
         typography = OffiaTypography,
+        shapes = OffiaShapes,
         content = content,
     )
 }
