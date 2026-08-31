@@ -9,54 +9,39 @@ data class ImproveProviderSelection(
     val reason: String? = null,
 )
 
+/**
+ * New OFF.IA builds never construct OpenAI/Gemini clients locally.
+ * Transformer access is exclusively mediated by M2A2 and the Memoria.ia server.
+ *
+ * This function remains the single UI/runtime selection boundary so a future
+ * M2A2ImproveProvider can be inserted without changing message semantics.
+ */
 fun configuredImproveProvider(
     context: Context,
     settings: AppSettings,
 ): ImproveProviderSelection {
-    val kind = settings.improveProvider
-        ?: return ImproveProviderSelection(null, null, configured = false, reason = "Nenhum provedor selecionado")
+    @Suppress("UNUSED_VARIABLE")
+    val applicationContext = context.applicationContext
 
-    if (settings.blockNetworkAfterModelDownload && kind != ImproveProviderKind.MA2A) {
-        return ImproveProviderSelection(null, kind, configured = false, reason = "Rede bloqueada nas configurações")
-    }
-
-    val credentials = SecureCredentialStore(context.applicationContext)
-    return when (kind) {
-        ImproveProviderKind.OPENAI -> {
-            val key = credentials.get(SecureCredentialStore.OPENAI_API_KEY)
-            if (key.isNullOrBlank()) {
-                ImproveProviderSelection(null, kind, configured = false, reason = "Chave OpenAI não configurada")
-            } else {
-                ImproveProviderSelection(
-                    provider = OpenAiImproveProvider(key, settings.openAiModel),
-                    kind = kind,
-                    configured = true,
-                )
-            }
-        }
-        ImproveProviderKind.GEMINI -> {
-            val key = credentials.get(SecureCredentialStore.GEMINI_API_KEY)
-            if (key.isNullOrBlank()) {
-                ImproveProviderSelection(null, kind, configured = false, reason = "Chave Gemini não configurada")
-            } else {
-                ImproveProviderSelection(
-                    provider = GeminiImproveProvider(key, settings.geminiModel),
-                    kind = kind,
-                    configured = true,
-                )
-            }
-        }
-        ImproveProviderKind.MA2A -> ImproveProviderSelection(
+    if (settings.blockNetworkAfterModelDownload) {
+        return ImproveProviderSelection(
             provider = null,
-            kind = kind,
+            kind = ImproveProviderKind.MA2A,
             configured = false,
-            reason = "MA2A ainda aguarda o contrato de rede",
+            reason = "Rede M2A2 bloqueada nas configurações",
         )
     }
+
+    return ImproveProviderSelection(
+        provider = null,
+        kind = ImproveProviderKind.MA2A,
+        configured = false,
+        reason = "M2A2 aguardando conexão com o servidor Memoria.ia",
+    )
 }
 
 fun ImproveProviderKind.displayName(): String = when (this) {
-    ImproveProviderKind.OPENAI -> "OpenAI"
-    ImproveProviderKind.GEMINI -> "Gemini"
-    ImproveProviderKind.MA2A -> "MA2A"
+    ImproveProviderKind.OPENAI -> "OpenAI (histórico)"
+    ImproveProviderKind.GEMINI -> "Gemini (histórico)"
+    ImproveProviderKind.MA2A -> "M2A2"
 }
