@@ -73,7 +73,7 @@ fun SettingsPanel(
         ) {
             Text("Configurações", style = MaterialTheme.typography.headlineSmall)
             Text(
-                "Inferência, Memoria.ia e BDR continuam locais. A Internet é usada somente por recursos online explícitos, como download de modelos, Curiosidade e Melhorar.",
+                "OFF.IA é local-first. llama.cpp, Memoria.ia e BDR permanecem locais. Download de modelos e Curiosidade são recursos online explícitos; acesso a transformers externos acontece somente pela rede M2A2.",
                 style = MaterialTheme.typography.bodySmall,
             )
 
@@ -140,8 +140,8 @@ fun SettingsPanel(
                     onCheckedChange = { update(settings.copy(wifiOnlyModelDownloads = it)) },
                 )
                 SettingsSwitch(
-                    title = "Bloquear rede depois de baixar o modelo",
-                    subtitle = "Quando ativado, Curiosidade e Melhorar por nuvem ficam bloqueados após o onboarding.",
+                    title = "Bloquear recursos online",
+                    subtitle = "Quando ativado, Curiosidade e a futura rota M2A2 ficam bloqueadas após o onboarding do modelo.",
                     checked = settings.blockNetworkAfterModelDownload,
                     onCheckedChange = { update(settings.copy(blockNetworkAfterModelDownload = it)) },
                 )
@@ -149,12 +149,12 @@ fun SettingsPanel(
 
             SettingsSection("Privacidade") {
                 SettingsSwitch(
-                    title = "Confirmar antes de enviar para nuvem",
-                    subtitle = "Quando ativado, OFF.IA pede confirmação antes de cada melhoria via OpenAI/Gemini.",
-                    checked = settings.confirmBeforeCloud,
-                    onCheckedChange = { update(settings.copy(confirmBeforeCloud = it)) },
+                    title = "Confirmar antes de enviar pela M2A2",
+                    subtitle = "Quando a rota estiver ativa, OFF.IA pedirá confirmação antes de enviar contexto selecionado ao servidor Memoria.ia.",
+                    checked = settings.confirmBeforeM2A2,
+                    onCheckedChange = { update(settings.copy(confirmBeforeM2A2 = it)) },
                 )
-                Text("Internet: permitida somente para recursos online", style = MaterialTheme.typography.labelMedium)
+                Text("Transformer externo: somente via M2A2", style = MaterialTheme.typography.labelMedium)
                 Text("Inferência principal: llama.cpp local", style = MaterialTheme.typography.labelMedium)
                 Text("Memória: Memoria.ia + BDR local", style = MaterialTheme.typography.labelMedium)
             }
