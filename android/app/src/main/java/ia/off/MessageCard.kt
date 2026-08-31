@@ -48,6 +48,7 @@ fun MessageCard(
     val scope = rememberCoroutineScope()
     val chatStore = remember { ChatStore(appContext) }
     val settingsStore = remember { AppSettingsStore(appContext) }
+    val laboratoryMode = settingsStore.load().laboratoryMode
     val isUser = message.role == "Você"
     val responseSource = message.generation?.source
     val isLocal = responseSource == ResponseSource.LOCAL
@@ -76,16 +77,8 @@ fun MessageCard(
         val selection = configuredImproveProvider(appContext, settings)
         val provider = selection.provider
         if (!selection.configured || provider == null) {
-            improveError = selection.reason ?: "Configure um provedor em Configurações"
+            improveError = selection.reason ?: "M2A2 ainda não configurada"
             return
-        }
-
-        if (selection.kind == ImproveProviderKind.OPENAI || selection.kind == ImproveProviderKind.GEMINI) {
-            val network = currentNetworkState(appContext)
-            if (!network.connected || !network.validated) {
-                improveError = "Sem conexão com Internet validada"
-                return
-            }
         }
 
         val interaction = chatStore.findInteraction(message.id)
@@ -114,7 +107,7 @@ fun MessageCard(
                 )
                 improvements = (improvements + record).takeLast(5)
                 if (!chatStore.appendImprovement(message.id, record)) {
-                    improveError = "Resposta melhorada gerada, mas não foi possível persistir a alternativa"
+                    improveError = "Resposta M2A2 recebida, mas não foi possível persistir a alternativa"
                 }
             } catch (e: Exception) {
                 improveError = e.message ?: e.javaClass.simpleName
@@ -132,13 +125,11 @@ fun MessageCard(
         val settings = settingsStore.load()
         val selection = configuredImproveProvider(appContext, settings)
         if (!selection.configured || selection.provider == null) {
-            improveError = selection.reason ?: "Configure um provedor em Configurações"
+            improveError = selection.reason ?: "M2A2 ainda não configurada"
             return
         }
-        if (settings.confirmBeforeCloud &&
-            (selection.kind == ImproveProviderKind.OPENAI || selection.kind == ImproveProviderKind.GEMINI)
-        ) {
-            pendingConfirmation = selection.kind
+        if (settings.confirmBeforeM2A2 && selection.kind == ImproveProviderKind.MA2A) {
+            pendingConfirmation = ImproveProviderKind.MA2A
         } else {
             executeConfiguredImprove()
         }
@@ -158,9 +149,9 @@ fun MessageCard(
                     isCuriosity -> "OFF.IA • Curiosidade"
                     isImproved -> {
                         val provider = when (responseSource) {
-                            ResponseSource.OPENAI -> "OpenAI"
-                            ResponseSource.GEMINI -> "Gemini"
-                            ResponseSource.MA2A -> "MA2A"
+                            ResponseSource.OPENAI -> "OpenAI · histórico"
+                            ResponseSource.GEMINI -> "Gemini · histórico"
+                            ResponseSource.MA2A -> "M2A2"
                             else -> "Externa"
                         }
                         "OFF.IA • Melhorada · $provider"
@@ -169,7 +160,7 @@ fun MessageCard(
                 },
                 style = MaterialTheme.typography.labelMedium,
             )
-            message.generation?.modelName?.takeIf { isImproved && it.isNotBlank() }?.let { model ->
+            message.generation?.modelName?.takeIf { laboratoryMode && isImproved && it.isNotBlank() }?.let { model ->
                 Text(model, style = MaterialTheme.typography.labelSmall)
             }
             Surface(
@@ -185,45 +176,57 @@ fun MessageCard(
             if (!isUser && message.text != "…") {
                 Row(
                     modifier = Modifier.horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(0.dp),
                 ) {
                     TextButton(onClick = { clipboard.setText(AnnotatedString(message.text)) }) {
                         Text("Copiar")
                     }
-                    TextButton(onClick = { memoryExpanded = !memoryExpanded }) {
-                        Text(if (memoryExpanded) "Ocultar memória" else "Memória")
+                    if (!isCuriosity || message.memory != null) {
+                        TextButton(onClick = { memoryExpanded = !memoryExpanded }) {
+                            Text(if (memoryExpanded) "Ocultar" else "Memória")
+                        }
                     }
                     if (hasPublicEvidence) {
                         TextButton(onClick = { sourcesExpanded = !sourcesExpanded }) {
                             Text(
-                                if (sourcesExpanded) {
-                                    "Ocultar fontes"
-                                } else if (publicSources.isNotEmpty()) {
-                                    "Fontes (${publicSources.size})"
-                                } else {
-                                    "Conhecimento público"
+                                when {
+                                    sourcesExpanded -> "Ocultar"
+                                    publicSources.isNotEmpty() -> "Fontes (${publicSources.size})"
+                                    else -> "Conhecimento"
                                 },
                             )
                         }
                     }
-                    TextButton(
-                        enabled = onCuriosity != null && !busy && isLocal,
-                        onClick = { onCuriosity?.invoke(message.id) },
-                    ) { Text("Curiosidade") }
-                    TextButton(
-                        enabled = !busy && !improving && isLocal,
-                        onClick = { requestImprove() },
-                    ) { Text(if (improving) "Melhorando…" else "Melhorar") }
-                    TextButton(
-                        enabled = onRegenerate != null && !busy && isLocal,
-                        onClick = { onRegenerate?.invoke(message.id) },
-                    ) { Text("Regenerar") }
+                    if (isLocal) {
+                        TextButton(
+                            enabled = onCuriosity != null && !busy,
+                            onClick = { onCuriosity?.invoke(message.id) },
+                        ) { Text("Curiosidade") }
+                    }
                     Box {
                         TextButton(onClick = { moreExpanded = true }) { Text("⋯") }
                         DropdownMenu(
                             expanded = moreExpanded,
                             onDismissRequest = { moreExpanded = false },
                         ) {
+                            if (isLocal) {
+                                DropdownMenuItem(
+                                    enabled = !busy && !improving,
+                                    text = { Text(if (improving) "Melhorando via M2A2…" else "Melhorar via M2A2") },
+                                    onClick = {
+                                        moreExpanded = false
+                                        requestImprove()
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    enabled = onRegenerate != null && !busy,
+                                    text = { Text("Regenerar localmente") },
+                                    onClick = {
+                                        moreExpanded = false
+                                        onRegenerate?.invoke(message.id)
+                                    },
+                                )
+                            }
                             DropdownMenuItem(
                                 text = { Text("Compartilhar resposta") },
                                 onClick = {
@@ -240,7 +243,7 @@ fun MessageCard(
                                 },
                             )
                             DropdownMenuItem(
-                                text = { Text("Copiar resposta") },
+                                text = { Text("Copiar com detalhes") },
                                 onClick = {
                                     moreExpanded = false
                                     clipboard.setText(AnnotatedString(message.toShareText()))
@@ -259,12 +262,14 @@ fun MessageCard(
                 ResponseMemoryPanel(
                     memory = message.memory,
                     externalPublicMemoryIdsUsed = externalPublicMemoryIdsUsed,
+                    showDiagnostics = laboratoryMode,
                 )
             }
             if (!isUser && sourcesExpanded && hasPublicEvidence) {
                 PublicSourcesPanel(
                     sources = publicSources,
                     audit = publicKnowledge,
+                    showDiagnostics = laboratoryMode,
                     onOpen = { source ->
                         runCatching {
                             context.startActivity(
@@ -277,6 +282,7 @@ fun MessageCard(
             improvements.forEach { improvement ->
                 ImprovementPanel(
                     improvement = improvement,
+                    showDiagnostics = laboratoryMode,
                     onCopy = { clipboard.setText(AnnotatedString(improvement.text)) },
                     onShare = {
                         sharePlainText(
@@ -293,17 +299,17 @@ fun MessageCard(
     pendingConfirmation?.let { kind ->
         AlertDialog(
             onDismissRequest = { pendingConfirmation = null },
-            title = { Text("Enviar para ${kind.displayName()}?") },
+            title = { Text("Enviar pela M2A2?") },
             text = {
                 Text(
-                    "Será enviada a pergunta original, a resposta local e somente o contexto selecionado pela Memoria.ia para esta resposta. A base de memória completa e as chaves locais não são enviadas.",
+                    "OFF.IA enviará a pergunta, a resposta local e somente o contexto selecionado pela Memoria.ia para a rede M2A2. O servidor Memoria.ia será responsável pelo roteamento até o transformer.",
                 )
             },
             confirmButton = {
                 TextButton(onClick = {
                     pendingConfirmation = null
                     executeConfiguredImprove()
-                }) { Text("Enviar e melhorar") }
+                }) { Text("Enviar pela M2A2") }
             },
             dismissButton = {
                 TextButton(onClick = { pendingConfirmation = null }) { Text("Cancelar") }
@@ -326,12 +332,13 @@ private fun ChatMessage.toShareText(): String = buildString {
 @Composable
 private fun ImprovementPanel(
     improvement: ImprovementRecord,
+    showDiagnostics: Boolean,
     onCopy: () -> Unit,
     onShare: () -> Unit,
 ) {
     Surface(
-        tonalElevation = 3.dp,
-        shape = MaterialTheme.shapes.medium,
+        tonalElevation = 2.dp,
+        shape = MaterialTheme.shapes.large,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(
@@ -339,14 +346,17 @@ private fun ImprovementPanel(
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Text(
-                "Melhorada • ${improvement.provider.displayName()}",
+                "M2A2 • resposta melhorada",
                 style = MaterialTheme.typography.titleSmall,
             )
-            improvement.modelOrRoute?.let { model ->
-                Text(model, style = MaterialTheme.typography.labelSmall)
-            }
-            improvement.latencyMs?.let { latency ->
-                Text("${latency} ms", style = MaterialTheme.typography.labelSmall)
+            if (showDiagnostics) {
+                Text("Rota: ${improvement.provider.displayName()}", style = MaterialTheme.typography.labelSmall)
+                improvement.modelOrRoute?.let { route ->
+                    Text(route, style = MaterialTheme.typography.labelSmall)
+                }
+                improvement.latencyMs?.let { latency ->
+                    Text("${latency} ms", style = MaterialTheme.typography.labelSmall)
+                }
             }
             RichMessageContent(text = improvement.text)
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -361,51 +371,41 @@ private fun ImprovementPanel(
 private fun PublicSourcesPanel(
     sources: List<CuriositySource>,
     audit: PublicKnowledgeAudit?,
+    showDiagnostics: Boolean,
     onOpen: (CuriositySource) -> Unit,
 ) {
     Surface(
         tonalElevation = 2.dp,
-        shape = MaterialTheme.shapes.medium,
+        shape = MaterialTheme.shapes.large,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(
             modifier = Modifier.padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text("Fontes públicas", style = MaterialTheme.typography.titleSmall)
-            Text(
-                "Estas fontes são públicas/externas e nunca são registradas como afirmações pessoais do usuário.",
-                style = MaterialTheme.typography.bodySmall,
-            )
+            Text("Fontes", style = MaterialTheme.typography.titleSmall)
             audit?.let { publicAudit ->
-                HorizontalDivider()
                 Text(
-                    "Memoria.ia: ${publicAudit.knowledgeClass} • ${publicAudit.storedMemoryIds.size} registro(s) público(s)",
+                    "Memoria.ia aprendeu ${publicAudit.storedMemoryIds.size} registro(s) como conhecimento público.",
                     style = MaterialTheme.typography.bodySmall,
                 )
-                Text(
-                    "IDs das fontes: ${if (publicAudit.sourceMemoryIds.isEmpty()) "—" else publicAudit.sourceMemoryIds.joinToString()}",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                Text(
-                    "IDs aprendidos: ${if (publicAudit.storedMemoryIds.isEmpty()) "—" else publicAudit.storedMemoryIds.joinToString()}",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                Text(
-                    "Síntese derivada: ${if (publicAudit.synthesisStored) "aprendida" else "não aprendida"}",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                if (publicAudit.failedSourceCount > 0) {
+                if (showDiagnostics) {
+                    HorizontalDivider()
+                    Text("Classe: ${publicAudit.knowledgeClass}", style = MaterialTheme.typography.bodySmall)
                     Text(
-                        "Fontes rejeitadas/indisponíveis: ${publicAudit.failedSourceCount}",
+                        "IDs das fontes: ${if (publicAudit.sourceMemoryIds.isEmpty()) "—" else publicAudit.sourceMemoryIds.joinToString()}",
                         style = MaterialTheme.typography.bodySmall,
                     )
-                }
-                if (publicAudit.flushFailed) {
                     Text(
-                        "A Memoria.ia aceitou registros, mas a barreira final de flush retornou falha.",
+                        "IDs aprendidos: ${if (publicAudit.storedMemoryIds.isEmpty()) "—" else publicAudit.storedMemoryIds.joinToString()}",
                         style = MaterialTheme.typography.bodySmall,
                     )
+                    if (publicAudit.failedSourceCount > 0) {
+                        Text("Fontes rejeitadas: ${publicAudit.failedSourceCount}", style = MaterialTheme.typography.bodySmall)
+                    }
+                    if (publicAudit.flushFailed) {
+                        Text("Falha na barreira final de persistência.", style = MaterialTheme.typography.bodySmall)
+                    }
                 }
             }
             sources.forEachIndexed { index, source ->
@@ -413,7 +413,7 @@ private fun PublicSourcesPanel(
                 Text("${index + 1}. ${source.title}", style = MaterialTheme.typography.bodyMedium)
                 Text(source.domain, style = MaterialTheme.typography.labelSmall)
                 source.excerpt?.takeIf { it.isNotBlank() }?.let {
-                    Text(it.take(320), style = MaterialTheme.typography.bodySmall)
+                    Text(it.take(if (showDiagnostics) 320 else 160), style = MaterialTheme.typography.bodySmall)
                 }
                 TextButton(onClick = { onOpen(source) }) { Text("Abrir fonte") }
             }
@@ -425,51 +425,60 @@ private fun PublicSourcesPanel(
 private fun ResponseMemoryPanel(
     memory: ResponseMemoryMetadata?,
     externalPublicMemoryIdsUsed: List<String> = emptyList(),
+    showDiagnostics: Boolean,
 ) {
     Surface(
         tonalElevation = 2.dp,
-        shape = MaterialTheme.shapes.medium,
+        shape = MaterialTheme.shapes.large,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(
             modifier = Modifier.padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Text("Memoria.ia nesta resposta", style = MaterialTheme.typography.titleSmall)
+            Text("Memoria.ia", style = MaterialTheme.typography.titleSmall)
             if (memory == null) {
-                Text("Esta resposta não possui metadados de memória registrados.", style = MaterialTheme.typography.bodySmall)
+                Text("Esta resposta não utilizou contexto registrado da Memoria.ia.", style = MaterialTheme.typography.bodySmall)
             } else {
-                Text("Status: ${memory.status}", style = MaterialTheme.typography.bodySmall)
                 Text(
-                    "IDs usados: ${if (memory.memoryIds.isEmpty()) "—" else memory.memoryIds.joinToString()}",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                Text(
-                    "IDs aprendidos: ${if (memory.learnedMemoryIds.isEmpty()) "—" else memory.learnedMemoryIds.joinToString()}",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                memory.confidence?.let {
-                    Text("Confiança: ${"%.3f".format(it)}", style = MaterialTheme.typography.bodySmall)
-                }
-                Text(
-                    "Trajetória: ${if (memory.trajectoryUsed) "usada" else "não usada"} • janela=${memory.conversationWindowCount}",
+                    "${memory.memoryIds.size} memória(s) usada(s) • ${memory.learnedMemoryIds.size} aprendida(s)",
                     style = MaterialTheme.typography.bodySmall,
                 )
                 if (externalPublicMemoryIdsUsed.isNotEmpty()) {
-                    HorizontalDivider()
                     Text(
-                        "Conhecimento público usado: external_public",
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                    Text(
-                        "IDs públicos usados: ${externalPublicMemoryIdsUsed.joinToString()}",
+                        "Conhecimento público usado: ${externalPublicMemoryIdsUsed.size} registro(s)",
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
-                Text("Contexto selecionado: ${memory.selectedContext.length} caracteres", style = MaterialTheme.typography.bodySmall)
-                if (memory.selectedContext.isNotBlank()) {
+                memory.confidence?.let {
+                    Text("Confiança: ${"%.3f".format(it)}", style = MaterialTheme.typography.bodySmall)
+                }
+                if (showDiagnostics) {
                     HorizontalDivider()
-                    Text(memory.selectedContext, style = MaterialTheme.typography.bodyMedium)
+                    Text("Status: ${memory.status}", style = MaterialTheme.typography.bodySmall)
+                    Text(
+                        "IDs usados: ${if (memory.memoryIds.isEmpty()) "—" else memory.memoryIds.joinToString()}",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    Text(
+                        "IDs aprendidos: ${if (memory.learnedMemoryIds.isEmpty()) "—" else memory.learnedMemoryIds.joinToString()}",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    if (externalPublicMemoryIdsUsed.isNotEmpty()) {
+                        Text(
+                            "IDs públicos usados: ${externalPublicMemoryIdsUsed.joinToString()}",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    Text(
+                        "Trajetória: ${if (memory.trajectoryUsed) "usada" else "não usada"} • janela=${memory.conversationWindowCount}",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    Text("Contexto selecionado: ${memory.selectedContext.length} caracteres", style = MaterialTheme.typography.bodySmall)
+                    if (memory.selectedContext.isNotBlank()) {
+                        HorizontalDivider()
+                        Text(memory.selectedContext, style = MaterialTheme.typography.bodyMedium)
+                    }
                 }
             }
         }
