@@ -115,7 +115,12 @@ Java_ia_off_NativeMemoryGateway_nativeResolve(JNIEnv* env, jobject, jlong handle
         const auto status = memoria_mobile_resolve_context_json(runtime, in, &out);
         const std::string response = take_response(out);
         if (status != MEMORIA_MOBILE_OK && status != MEMORIA_MOBILE_UNRESOLVED) {
-            throw_illegal_state(env, "Falha ao consultar Memoria.ia");
+            std::string detail = "Memoria.ia resolve status=" +
+                std::to_string(static_cast<int>(status));
+            if (!response.empty()) {
+                detail += " response=" + response.substr(0, 512);
+            }
+            throw_illegal_state(env, detail);
             return nullptr;
         }
         return env->NewStringUTF(response.c_str());
