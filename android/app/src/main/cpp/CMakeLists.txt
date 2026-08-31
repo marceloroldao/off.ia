@@ -22,18 +22,6 @@ endif()
 
 add_subdirectory(${MEMORIA_SOURCE_DIR}/native/mobile ${CMAKE_BINARY_DIR}/memoria-mobile-build)
 
-# Physical-device diagnostic: preserve the native Memoria.ia resolve status and
-# response instead of collapsing every failure into a generic JNI exception.
-file(READ "${CMAKE_CURRENT_LIST_DIR}/offia_memory_jni.cpp" OFFIA_MEMORY_JNI_SOURCE)
-string(REPLACE
-[[throw_illegal_state(env, "Falha ao consultar Memoria.ia");]]
-[[std::string detail = "Memoria.ia resolve status=" + std::to_string(static_cast<int>(status));
-            if (!response.empty()) detail += " response=" + response.substr(0, 512);
-            throw_illegal_state(env, detail);]]
-OFFIA_MEMORY_JNI_SOURCE "${OFFIA_MEMORY_JNI_SOURCE}")
-set(OFFIA_MEMORY_JNI_DIAG "${CMAKE_CURRENT_BINARY_DIR}/offia_memory_jni_diag.cpp")
-file(WRITE "${OFFIA_MEMORY_JNI_DIAG}" "${OFFIA_MEMORY_JNI_SOURCE}")
-
-add_library(offia-memory SHARED "${OFFIA_MEMORY_JNI_DIAG}")
+add_library(offia-memory SHARED offia_memory_jni.cpp)
 target_include_directories(offia-memory PRIVATE ${MEMORIA_SOURCE_DIR}/include)
 target_link_libraries(offia-memory PRIVATE memoria_mobile android log)
