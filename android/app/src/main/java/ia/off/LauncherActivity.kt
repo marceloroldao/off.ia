@@ -2,7 +2,7 @@ package ia.off
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
-import androidx.activity.setContent
+import androidx.activity.compose.setContent
 
 /**
  * Product launcher shell.
