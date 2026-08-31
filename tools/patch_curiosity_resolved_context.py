@@ -1,5 +1,6 @@
 from pathlib import Path
 
+# One-shot branch patcher; workflow removes this file after applying the change.
 p = Path('android/app/src/main/java/ia/off/MainActivity.kt')
 s = p.read_text(encoding='utf-8')
 old = '''                status = "Online • registrando fontes públicas na Memoria.ia…"
