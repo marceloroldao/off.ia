@@ -189,7 +189,12 @@ Java_ia_off_NativeMemoryGateway_nativeLearnExternal(JNIEnv* env, jobject, jlong 
         const auto status = memoria_mobile_learn_external_knowledge_json(runtime, in, &out);
         const std::string response = take_response(out);
         if (status != MEMORIA_MOBILE_OK) {
-            throw_illegal_state(env, "Memoria.ia rejeitou conhecimento público externo");
+            std::string detail = "Memoria.ia external_public status=" +
+                std::to_string(static_cast<int>(status));
+            if (!response.empty()) {
+                detail += " response=" + response.substr(0, 512);
+            }
+            throw_illegal_state(env, detail);
             return nullptr;
         }
         return env->NewStringUTF(response.c_str());

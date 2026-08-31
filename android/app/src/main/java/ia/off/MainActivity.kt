@@ -537,8 +537,14 @@ fun OffiaChatScreen() {
                         "Offline • Curiosidade concluída • memória pública aguarda sincronização"
                     publicLearning.learned ->
                         "Offline • Curiosidade concluída • ${result.sources.size} fonte(s) • ${publicLearning.storedMemoryIds.size} memória(s) pública(s)"
-                    publicLearning.failedSourceCount > 0 ->
-                        "Offline • Curiosidade concluída • aprendizado público indisponível"
+                    publicLearning.failedSourceCount > 0 -> {
+                        val detail = publicLearning.failureReason?.take(180)
+                        if (detail.isNullOrBlank()) {
+                            "Offline • Curiosidade concluída • aprendizado público indisponível"
+                        } else {
+                            "Offline • Curiosidade • $detail"
+                        }
+                    }
                     else ->
                         "Offline • Curiosidade concluída • ${result.sources.size} fonte(s)"
                 }

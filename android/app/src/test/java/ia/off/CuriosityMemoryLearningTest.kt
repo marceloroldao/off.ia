@@ -135,6 +135,36 @@ class CuriosityMemoryLearningTest {
     }
 
     @Test
+    fun sourceFailurePreservesNativeDiagnosticReason() = runBlocking {
+        CuriosityPublicAuditBridge.clearForTests()
+        val memory = RecordingMemoryGateway(failExternal = true)
+        val result = CuriosityResult(
+            sourceText = "public material",
+            sources = listOf(
+                CuriositySource(
+                    title = "Source A",
+                    url = "https://pt.wikipedia.org/wiki/A",
+                    domain = "pt.wikipedia.org",
+                    excerpt = "A public fact is 7319.",
+                ),
+            ),
+        )
+
+        val report = learnCuriosityResult(
+            memory = memory,
+            result = result,
+            synthesis = "",
+            sessionId = "session-error",
+            requestId = "curiosity-error",
+            acquiredTime = "2026-08-30T12:00:50Z",
+        )
+
+        assertFalse(report.learned)
+        assertEquals(1, report.failedSourceCount)
+        assertTrue(report.failureReason?.contains("status=2") == true)
+    }
+
+    @Test
     fun flushFailureDoesNotDiscardLearnedPublicKnowledgeReport() = runBlocking {
         CuriosityPublicAuditBridge.clearForTests()
         val memory = RecordingMemoryGateway(failFlush = true)
@@ -172,6 +202,7 @@ class CuriosityMemoryLearningTest {
 
 private class RecordingMemoryGateway(
     private val failFlush: Boolean = false,
+    private val failExternal: Boolean = false,
 ) : MemoryGateway {
     override val available: Boolean = true
     val requests = mutableListOf<ExternalKnowledgeSource>()
@@ -187,6 +218,7 @@ private class RecordingMemoryGateway(
 
     override suspend fun learnExternalKnowledge(source: ExternalKnowledgeSource): ExternalKnowledgeLearnResult {
         requests += source
+        if (failExternal) error("Memoria.ia external_public status=2 response={\"status\":\"INVALID_ARGUMENT\"}")
         val id = "memory-${requests.size}"
         return ExternalKnowledgeLearnResult(
             memoryIds = listOf(id),
