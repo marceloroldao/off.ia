@@ -1,5 +1,6 @@
 package ia.off
 
+import java.net.URI
 import java.time.Instant
 import java.util.LinkedHashMap
 
@@ -50,6 +51,56 @@ internal object CuriosityPublicAuditBridge {
     fun clearForTests() = pending.clear()
 }
 
+private data class NormalizedPublicSource(
+    val content: String,
+    val url: String,
+    val domain: String,
+    val title: String,
+    val excerpt: String,
+)
+
+/**
+ * Fail closed before crossing the mobile ABI. MediaWiki normally returns an
+ * absolute `fullurl`, but consumers/providers may also return protocol-relative
+ * URLs. Memoria.ia deliberately requires http(s) provenance and a domain, so
+ * normalize those values from the URL itself rather than trusting duplicated UI
+ * metadata.
+ */
+private fun normalizePublicSource(source: CuriositySource): NormalizedPublicSource {
+    val raw = source.rawContent?.trim().orEmpty()
+    val excerpt = source.excerpt?.trim().orEmpty()
+    val content = raw.ifBlank { excerpt }
+    require(content.isNotBlank()) { "Fonte pública sem conteúdo utilizável" }
+
+    val candidateUrl = source.url.trim().let { value ->
+        when {
+            value.startsWith("//") -> "https:$value"
+            else -> value
+        }
+    }
+    require(candidateUrl.isNotBlank()) { "Fonte pública sem URL" }
+
+    val uri = runCatching { URI(candidateUrl) }
+        .getOrElse { throw IllegalArgumentException("URL pública inválida: ${candidateUrl.take(120)}") }
+    val scheme = uri.scheme?.lowercase().orEmpty()
+    require(scheme == "http" || scheme == "https") {
+        "Fonte pública exige URL http(s)"
+    }
+    val host = uri.host?.trim()?.lowercase().orEmpty()
+    require(host.isNotBlank()) { "Fonte pública sem domínio válido" }
+
+    val title = source.title.trim().ifBlank { host }
+    require(title.isNotBlank()) { "Fonte pública sem título" }
+
+    return NormalizedPublicSource(
+        content = content,
+        url = uri.toASCIIString(),
+        domain = host,
+        title = title,
+        excerpt = excerpt.ifBlank { content.take(1_200) }.take(1_200),
+    )
+}
+
 /**
  * Persists public source evidence before any LLM rendering.
  *
@@ -66,26 +117,25 @@ suspend fun learnCuriositySources(
 ): CuriosityMemoryLearningReport {
     if (!memory.available) return CuriosityMemoryLearningReport()
 
+    val timestamp = acquiredTime.trim()
+    require(timestamp.isNotBlank()) { "Curiosidade sem acquired_time" }
+
     val sourceIds = linkedSetOf<String>()
     val storedIds = linkedSetOf<String>()
     var failedSources = 0
     var firstFailureReason: String? = null
 
     result.sources.forEachIndexed { index, source ->
-        val raw = source.rawContent?.trim().orEmpty()
-        val excerpt = source.excerpt?.trim().orEmpty()
-        val content = raw.ifBlank { excerpt }
-        if (content.isBlank()) return@forEachIndexed
-
         try {
+            val normalized = normalizePublicSource(source)
             val learned = memory.learnExternalKnowledge(
                 ExternalKnowledgeSource(
-                    content = content,
-                    sourceUrl = source.url,
-                    sourceDomain = source.domain,
-                    sourceTitle = source.title,
-                    acquiredTime = acquiredTime,
-                    sourceExcerpt = excerpt.ifBlank { content.take(1_200) }.take(1_200),
+                    content = normalized.content,
+                    sourceUrl = normalized.url,
+                    sourceDomain = normalized.domain,
+                    sourceTitle = normalized.title,
+                    acquiredTime = timestamp,
+                    sourceExcerpt = normalized.excerpt,
                     providerId = "wikipedia-curiosity",
                     importKind = "imported",
                     validationConfidence = 0.85,
