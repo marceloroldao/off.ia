@@ -79,40 +79,8 @@ class NativeMemoryGateway(context: Context) : MemoryGateway, AutoCloseable {
 
     override suspend fun learnExternalKnowledge(source: ExternalKnowledgeSource): ExternalKnowledgeLearnResult =
         withContext(Dispatchers.IO) {
-            require(source.content.isNotBlank()) { "Conhecimento público vazio" }
-            require(source.sourceUrl.isNotBlank()) { "URL de origem pública vazia" }
-            require(source.sourceDomain.isNotBlank()) { "Domínio de origem pública vazio" }
-            require(source.sourceTitle.isNotBlank()) { "Título de origem pública vazio" }
-            require(source.acquiredTime.isNotBlank()) { "Data de aquisição pública vazia" }
-            require(source.validationConfidence in 0.0..1.0) { "Confiança pública deve estar entre 0 e 1" }
-            require(source.importKind in setOf("imported", "synthesized", "derived")) {
-                "Tipo de importação pública inválido"
-            }
-            if (source.importKind == "derived") {
-                require(source.parentMemoryIds.isNotEmpty()) { "Conhecimento público derivado requer memória-pai" }
-                require(source.parentMemoryIds.all { it.isNotBlank() }) { "ID de memória-pai público inválido" }
-            } else {
-                require(source.parentMemoryIds.isEmpty()) { "Somente conhecimento público derivado aceita memória-pai" }
-            }
-
-            val request = JSONObject().apply {
-                put("content", source.content)
-                put("source_class", "external_public")
-                put("source_url", source.sourceUrl)
-                put("source_domain", source.sourceDomain)
-                put("source_title", source.sourceTitle)
-                put("acquired_time", source.acquiredTime)
-                put("source_excerpt", source.sourceExcerpt)
-                put("provider_id", source.providerId)
-                put("import_kind", source.importKind)
-                put("validation_confidence", source.validationConfidence)
-                put("request_id", source.requestId)
-                put("session_id", source.sessionId)
-                put("namespace", source.namespace)
-                put("parent_memory_ids", JSONArray(source.parentMemoryIds))
-            }
-
-            val json = JSONObject(nativeLearnExternal(requireHandle(), request.toString()))
+            val request = buildExternalKnowledgeRequestJson(source)
+            val json = JSONObject(nativeLearnExternal(requireHandle(), request))
             val ids = parseIds(json.optJSONArray("stored_memory_ids"))
             check(ids.isNotEmpty()) { "Memoria.ia não retornou memory_id para conhecimento público" }
             ExternalKnowledgeLearnResult(
