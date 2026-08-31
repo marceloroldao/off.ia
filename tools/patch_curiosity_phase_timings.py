@@ -1,5 +1,6 @@
 from pathlib import Path
 
+# One-shot branch patcher; workflow removes this file after applying the change.
 p = Path('android/app/src/main/java/ia/off/MainActivity.kt')
 s = p.read_text(encoding='utf-8')
 
@@ -32,7 +33,6 @@ new2 = '''                    ),
                 val acquisitionLatencyMs = (System.nanoTime() - acquisitionStartedAt) / 1_000_000L
                 messages[curiosityIndex] = messages[curiosityIndex].copy(
 '''
-# only replace the occurrence immediately inside Curiosity region after the marker
 idx = s.find('val acquisitionStartedAt = System.nanoTime()')
 pos = s.find(old2, idx)
 if pos < 0:
