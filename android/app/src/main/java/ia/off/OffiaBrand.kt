@@ -63,7 +63,7 @@ private val OffiaDarkColors = darkColorScheme(
     outline = Color(0xFF8294AA),
 )
 
-private val OffiaTypography = Typography(
+private fun offiaTypography(laboratoryMode: Boolean) = Typography(
     headlineSmall = TextStyle(fontFamily = FontFamily.SansSerif, fontSize = 24.sp),
     titleLarge = TextStyle(fontFamily = FontFamily.SansSerif, fontSize = 20.sp),
     titleMedium = TextStyle(fontFamily = FontFamily.SansSerif, fontSize = 17.sp),
@@ -72,6 +72,11 @@ private val OffiaTypography = Typography(
     bodySmall = TextStyle(fontFamily = FontFamily.SansSerif, fontSize = 13.sp),
     labelLarge = TextStyle(fontFamily = FontFamily.SansSerif, fontSize = 14.sp),
     labelMedium = TextStyle(fontFamily = FontFamily.SansSerif, fontSize = 12.sp),
+    labelSmall = if (laboratoryMode) {
+        TextStyle(fontFamily = FontFamily.SansSerif, fontSize = 11.sp)
+    } else {
+        TextStyle(fontFamily = FontFamily.SansSerif, fontSize = 0.sp, lineHeight = 1.sp)
+    },
 )
 
 private val OffiaShapes = Shapes(
@@ -83,10 +88,13 @@ private val OffiaShapes = Shapes(
 )
 
 @Composable
-fun OffiaTheme(content: @Composable () -> Unit) {
+fun OffiaTheme(
+    laboratoryMode: Boolean = false,
+    content: @Composable () -> Unit,
+) {
     MaterialTheme(
         colorScheme = if (isSystemInDarkTheme()) OffiaDarkColors else OffiaLightColors,
-        typography = OffiaTypography,
+        typography = offiaTypography(laboratoryMode),
         shapes = OffiaShapes,
         content = content,
     )
