@@ -79,27 +79,8 @@ class NativeMemoryGateway(context: Context) : MemoryGateway, AutoCloseable {
 
     override suspend fun learnExternalKnowledge(source: ExternalKnowledgeSource): ExternalKnowledgeLearnResult =
         withContext(Dispatchers.IO) {
-            validateExternalKnowledgeSource(source)
-
-            val request = JSONObject().apply {
-                // Keep contract/provenance keys ahead of untrusted raw Web content.
-                put("source_class", "external_public")
-                put("source_url", source.sourceUrl)
-                put("source_domain", source.sourceDomain)
-                put("source_title", source.sourceTitle)
-                put("acquired_time", source.acquiredTime)
-                put("source_excerpt", source.sourceExcerpt)
-                put("provider_id", source.providerId)
-                put("import_kind", source.importKind)
-                put("validation_confidence", source.validationConfidence)
-                put("request_id", source.requestId)
-                put("session_id", source.sessionId)
-                put("namespace", source.namespace)
-                put("parent_memory_ids", JSONArray(source.parentMemoryIds))
-                put("content", source.content)
-            }
-
-            val json = JSONObject(nativeLearnExternal(requireHandle(), request.toString()))
+            val request = buildExternalKnowledgeRequestJson(source)
+            val json = JSONObject(nativeLearnExternal(requireHandle(), request))
             val ids = parseIds(json.optJSONArray("stored_memory_ids"))
             check(ids.isNotEmpty()) { "Memoria.ia não retornou memory_id para conhecimento público" }
             ExternalKnowledgeLearnResult(
