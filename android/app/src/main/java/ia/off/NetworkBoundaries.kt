@@ -69,8 +69,11 @@ interface CuriosityProvider {
 }
 
 enum class ImproveProviderKind {
+    /** Historical transcript compatibility only. New OFF.IA builds never instantiate this route. */
     OPENAI,
+    /** Historical transcript compatibility only. New OFF.IA builds never instantiate this route. */
     GEMINI,
+    /** The only supported transformer/network improvement route. */
     MA2A,
 }
 
@@ -87,8 +90,14 @@ data class ImproveResult(
 )
 
 /**
- * External improvement receives only explicitly selected minimal context.
- * API credentials are outside Memoria.ia/BDR and must never enter diagnostic exports.
+ * Transformer improvement boundary.
+ *
+ * Hard invariant for new OFF.IA product code:
+ * OFF.IA -> M2A2 -> Memoria.ia server -> transformer/provider
+ *
+ * OFF.IA must not call OpenAI, Gemini or another transformer API directly.
+ * Authentication, provider choice and transformer routing belong behind M2A2 /
+ * the Memoria.ia server boundary.
  */
 interface ImproveProvider {
     val kind: ImproveProviderKind
@@ -107,5 +116,5 @@ class UnavailableImproveProvider(
 ) : ImproveProvider {
     override val available: Boolean = false
     override suspend fun improve(request: ImproveRequest): ImproveResult =
-        error("Provedor ${kind.name} não configurado")
+        error("Rota ${kind.name} não configurada")
 }
