@@ -508,7 +508,40 @@ fun OffiaChatScreen() {
                     generation = messages[curiosityIndex].generation?.copy(publicSources = result.sources),
                 )
 
-                status = "Offline • sintetizando Curiosidade localmente…"
+                status = "Online • registrando fontes públicas na Memoria.ia…"
+                val publicLearning = learnCuriositySources(
+                    memory = memory,
+                    result = result,
+                    sessionId = activeSessionId,
+                    requestId = curiosityMessage.id,
+                )
+                saveWorkspace()
+
+                if (!publicLearning.learned || publicLearning.failedSourceCount > 0 || publicLearning.flushFailed) {
+                    val detail = publicLearning.failureReason?.take(180)
+                    messages[curiosityIndex] = messages[curiosityIndex].copy(
+                        text = when {
+                            publicLearning.flushFailed ->
+                                "Curiosidade encontrou fontes, mas a Memoria.ia não confirmou a persistência pública. O modelo local não foi chamado."
+                            !detail.isNullOrBlank() ->
+                                "Curiosidade encontrou fontes, mas a Memoria.ia rejeitou evidência pública: $detail"
+                            else ->
+                                "Curiosidade encontrou fontes, mas nem todas foram aceitas pela Memoria.ia. O modelo local não foi chamado."
+                        },
+                    )
+                    saveWorkspace()
+                    status = when {
+                        publicLearning.flushFailed ->
+                            "Online • Curiosidade interrompida • flush da memória pública falhou"
+                        !detail.isNullOrBlank() ->
+                            "Online • Curiosidade • $detail"
+                        else ->
+                            "Online • Curiosidade interrompida • memória pública incompleta"
+                    }
+                    return@launch
+                }
+
+                status = "Offline • fontes públicas memorizadas • sintetizando resposta final…"
                 generating = true
                 val generationStartedAt = System.currentTimeMillis()
                 val prompt = materializeCuriosityPrompt(userQuestion, localResponse.text, result)
@@ -518,36 +551,14 @@ fun OffiaChatScreen() {
                 }
                 val generationLatency = System.currentTimeMillis() - generationStartedAt
                 messages[curiosityIndex] = messages[curiosityIndex].copy(
-                    text = answer.toString().ifBlank { "As fontes foram encontradas, mas o modelo não gerou uma síntese." },
+                    text = answer.toString().ifBlank { "As fontes foram memorizadas, mas o modelo não gerou uma resposta final." },
                     generation = messages[curiosityIndex].generation?.copy(
                         latencyMs = generationLatency,
                         publicSources = result.sources,
                     ),
                 )
-                val publicLearning = learnCuriosityResult(
-                    memory = memory,
-                    result = result,
-                    synthesis = answer.toString(),
-                    sessionId = activeSessionId,
-                    requestId = curiosityMessage.id,
-                )
                 saveWorkspace()
-                status = when {
-                    publicLearning.flushFailed ->
-                        "Offline • Curiosidade concluída • memória pública aguarda sincronização"
-                    publicLearning.learned ->
-                        "Offline • Curiosidade concluída • ${result.sources.size} fonte(s) • ${publicLearning.storedMemoryIds.size} memória(s) pública(s)"
-                    publicLearning.failedSourceCount > 0 -> {
-                        val detail = publicLearning.failureReason?.take(180)
-                        if (detail.isNullOrBlank()) {
-                            "Offline • Curiosidade concluída • aprendizado público indisponível"
-                        } else {
-                            "Offline • Curiosidade • $detail"
-                        }
-                    }
-                    else ->
-                        "Offline • Curiosidade concluída • ${result.sources.size} fonte(s)"
-                }
+                status = "Offline • Curiosidade concluída • ${result.sources.size} fonte(s) memorizada(s) • ${publicLearning.storedMemoryIds.size} memória(s) pública(s)"
             } catch (_: CancellationException) {
                 if (answer.isEmpty()) {
                     messages[curiosityIndex] = messages[curiosityIndex].copy(text = "Curiosidade interrompida.")
