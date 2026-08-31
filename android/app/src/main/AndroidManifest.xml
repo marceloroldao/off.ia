@@ -11,6 +11,8 @@
     <application
         android:allowBackup="false"
         android:extractNativeLibs="true"
+        android:icon="@drawable/offia_app_icon"
+        android:roundIcon="@drawable/offia_app_icon"
         android:label="OFF.IA"
         android:supportsRtl="true"
         android:theme="@style/Theme.Offia">
