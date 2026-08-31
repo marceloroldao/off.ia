@@ -7,7 +7,9 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
@@ -63,18 +65,20 @@ fun ConversationTopBar(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .statusBarsPadding()
                 .padding(horizontal = 8.dp, vertical = 6.dp),
             verticalArrangement = Arrangement.spacedBy(2.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 Box {
                     TextButton(
                         enabled = !busy,
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                        colors = ButtonDefaults.textButtonColors(contentColor = OffiaBlue),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
                         onClick = { conversationsExpanded = true },
                     ) { Text("☰", style = MaterialTheme.typography.titleLarge) }
                     DropdownMenu(
@@ -113,15 +117,19 @@ fun ConversationTopBar(
                     }
                 }
 
+                OffiaOrbitalSymbol()
+
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = activeSession.title,
+                        color = OffiaDeep,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         style = MaterialTheme.typography.titleMedium,
                     )
                     Text(
                         text = status,
+                        color = OffiaTextMuted,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         style = MaterialTheme.typography.labelSmall,
@@ -130,14 +138,16 @@ fun ConversationTopBar(
 
                 TextButton(
                     enabled = !busy,
-                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                    colors = ButtonDefaults.textButtonColors(contentColor = OffiaBlue),
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
                     onClick = onNewConversation,
                 ) { Text("＋", style = MaterialTheme.typography.titleLarge) }
 
                 Box {
                     TextButton(
                         enabled = !busy || downloadActive,
-                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 8.dp),
+                        colors = ButtonDefaults.textButtonColors(contentColor = OffiaBlue),
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 8.dp),
                         onClick = { actionsExpanded = true },
                     ) { Text("⋮", style = MaterialTheme.typography.titleLarge) }
                     DropdownMenu(expanded = actionsExpanded, onDismissRequest = { actionsExpanded = false }) {
@@ -208,16 +218,18 @@ fun ConversationTopBar(
             modelSummary?.let {
                 Text(
                     text = it,
+                    color = OffiaTextMuted,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(start = 48.dp, end = 8.dp),
+                    modifier = Modifier.padding(start = 86.dp, end = 8.dp),
                     style = MaterialTheme.typography.labelSmall,
                 )
             }
 
             if (downloadActive) {
                 TextButton(
-                    modifier = Modifier.padding(start = 40.dp),
+                    colors = ButtonDefaults.textButtonColors(contentColor = OffiaBlue),
+                    modifier = Modifier.padding(start = 78.dp),
                     onClick = onCancelModelDownload,
                 ) { Text("Cancelar download") }
             }
