@@ -2,8 +2,9 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <!--
       OFF.IA remains local-first. Network permission is used only by explicit
-      online capabilities such as first-run model download, Curiosity and
-      external Improve providers. llama.cpp, Memoria.ia and BDR remain local.
+      online capabilities such as first-run model download and Curiosity.
+      Transformer access is routed only through the future M2A2 boundary;
+      llama.cpp, Memoria.ia and BDR remain local.
     -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -18,6 +19,9 @@
         android:theme="@style/Theme.Offia">
         <activity
             android:name=".MainActivity"
+            android:exported="false" />
+        <activity
+            android:name=".LauncherActivity"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
