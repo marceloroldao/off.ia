@@ -18,6 +18,7 @@ class ModelManager(context: Context) {
     companion object {
         private const val APP_PREFS = "offia-local"
         private const val PREF_MODEL_PATH = "model-path"
+        private const val PREF_MODEL_NAME = "model-name"
         private const val MODELS_DIR = "models"
     }
 
@@ -49,6 +50,20 @@ class ModelManager(context: Context) {
     fun activeModel(): InstalledModel? = installedModels().firstOrNull { it.active }
 
     fun storageBytes(): Long = installedModels().sumOf { it.sizeBytes }
+
+    fun select(model: InstalledModel) {
+        require(model.valid) { "O modelo precisa ser um GGUF válido" }
+        val canonicalRoot = modelsDir.canonicalFile
+        val target = File(model.path).canonicalFile
+        require(target.parentFile == canonicalRoot) { "Modelo fora do diretório gerenciado" }
+        require(target.isFile && target.canRead()) { "Modelo instalado não pode ser lido" }
+        require(readGgufVersion(target) != null) { "GGUF inválido ou incompatível" }
+
+        prefs.edit()
+            .putString(PREF_MODEL_PATH, target.absolutePath)
+            .putString(PREF_MODEL_NAME, model.name)
+            .commit()
+    }
 
     fun delete(model: InstalledModel): Boolean {
         require(!model.active) { "O modelo ativo deve ser trocado antes de ser excluído" }
