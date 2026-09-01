@@ -6,6 +6,7 @@ on:
     branches:
       - main
       - feat/android-mvp
+      - feat/android-kv-cache-q8-default-v2
     paths:
       - 'android/**'
       - '.github/workflows/android-apk.yml'
@@ -21,6 +22,8 @@ concurrency:
 jobs:
   build-debug-apk:
     runs-on: ubuntu-latest
+    env:
+      OFFIA_KV_CACHE_TYPE: q8_0
 
     steps:
       - name: Checkout OFF.IA
@@ -34,6 +37,14 @@ jobs:
           git -C android/vendor/llama.cpp fetch --depth 1 origin ca3d5a3e10d53f7ea672cb9b6178faca3e2807bc
           git -C android/vendor/llama.cpp checkout --detach ca3d5a3e10d53f7ea672cb9b6178faca3e2807bc
           python3 android/scripts/patch_llama_android_diagnostics.py
+          python3 android/scripts/patch_llama_kv_cache.py
+
+      - name: Verify Q8_0 KV-cache default
+        shell: bash
+        run: |
+          grep -q "OFF.IA KV cache mode: q8_0" android/vendor/llama.cpp/examples/llama.android/lib/src/main/cpp/ai_chat.cpp
+          grep -q "ctx_params.type_k = GGML_TYPE_Q8_0" android/vendor/llama.cpp/examples/llama.android/lib/src/main/cpp/ai_chat.cpp
+          grep -q "ctx_params.type_v = GGML_TYPE_Q8_0" android/vendor/llama.cpp/examples/llama.android/lib/src/main/cpp/ai_chat.cpp
 
       - name: Checkout pinned Memoria.ia mobile runtime
         uses: actions/checkout@v6
