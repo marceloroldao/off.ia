@@ -1,5 +1,9 @@
 package ia.off
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -30,6 +34,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsPanel(
@@ -42,12 +52,14 @@ fun SettingsPanel(
     onExportMemory: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val context = LocalContext.current.applicationContext
+    val hostContext = LocalContext.current
+    val context = hostContext.applicationContext
     val store = remember { AppSettingsStore(context) }
     val modelManager = remember { ModelManager(context) }
     var settings by remember { mutableStateOf(store.load()) }
     var installedModels by remember { mutableStateOf(modelManager.installedModels()) }
     var deleteCandidate by remember { mutableStateOf<InstalledModel?>(null) }
+    var modelSelectionError by remember { mutableStateOf<String?>(null) }
     val defaultModel = ModelCatalog.defaultModel
     val downloadActive = modelDownloadState is ModelDownloadState.Downloading ||
         modelDownloadState is ModelDownloadState.Verifying
@@ -61,6 +73,19 @@ fun SettingsPanel(
     fun update(next: AppSettings) {
         settings = next
         store.save(next)
+    }
+
+    fun selectModel(model: InstalledModel) {
+        if (model.active || !model.valid || downloadActive) return
+        val result = runCatching { modelManager.select(model) }
+        result.onSuccess {
+            modelSelectionError = null
+            installedModels = modelManager.installedModels()
+            onDismiss()
+            hostContext.findActivity()?.recreate()
+        }.onFailure { error ->
+            modelSelectionError = error.message ?: error.javaClass.simpleName
+        }
     }
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
@@ -83,11 +108,20 @@ fun SettingsPanel(
                     "${installedModels.size} instalado(s) • ${modelManager.storageBytes().formatStorageSize()}",
                     style = MaterialTheme.typography.labelMedium,
                 )
+                Text(
+                    "Toque em um modelo instalado para ativá-lo. O modelo ativo não pode ser excluído.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
                 installedModels.forEach { model ->
                     InstalledModelRow(
                         model = model,
+                        enabled = !downloadActive,
+                        onSelect = { selectModel(model) },
                         onDelete = { deleteCandidate = model },
                     )
+                }
+                modelSelectionError?.let { error ->
+                    Text("Falha ao selecionar modelo: $error", style = MaterialTheme.typography.bodySmall)
                 }
 
                 Text("Modelo padrão", style = MaterialTheme.typography.titleSmall)
@@ -231,22 +265,28 @@ private fun ModelDownloadStatus(
 @Composable
 private fun InstalledModelRow(
     model: InstalledModel,
+    enabled: Boolean,
+    onSelect: () -> Unit,
     onDelete: () -> Unit,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = enabled && model.valid && !model.active, onClick = onSelect)
+            .padding(vertical = 4.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(
-                if (model.active) "${model.name} • ativo" else model.name,
+                if (model.active) "${model.name} • Ativo ✓" else model.name,
                 style = MaterialTheme.typography.bodyMedium,
             )
             val gguf = model.ggufVersion?.let { "GGUF v$it" } ?: "GGUF inválido/desconhecido"
-            Text("$gguf • ${model.sizeBytes.formatStorageSize()}", style = MaterialTheme.typography.bodySmall)
+            val state = if (model.active) "Instalado • ativo" else "Instalado • toque para ativar"
+            Text("$gguf • ${model.sizeBytes.formatStorageSize()} • $state", style = MaterialTheme.typography.bodySmall)
         }
-        TextButton(enabled = !model.active, onClick = onDelete) { Text("Excluir") }
+        TextButton(enabled = enabled && !model.active, onClick = onDelete) { Text("Excluir") }
     }
 }
 
