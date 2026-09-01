@@ -6,6 +6,7 @@ on:
     branches:
       - main
       - feat/android-mvp
+      - feat/android-chat-ux-v3
     paths:
       - 'android/**'
       - '.github/workflows/android-apk.yml'
