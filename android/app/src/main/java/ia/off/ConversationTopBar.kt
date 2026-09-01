@@ -53,10 +53,12 @@ fun ConversationTopBar(
     val context = LocalContext.current
     val downloadActive = modelDownloadState is ModelDownloadState.Downloading ||
         modelDownloadState is ModelDownloadState.Verifying
-    val routeLabel = if (status.contains("M2A2", ignoreCase = true)) {
-        "Online • M2A2"
-    } else {
-        "Offline • LLM local"
+    val routeLabel = when {
+        status.contains("M2A2", ignoreCase = true) -> "Online • M2A2"
+        status.contains("Curiosidade", ignoreCase = true) ||
+            status.contains("buscando fontes", ignoreCase = true) ||
+            status.startsWith("Online", ignoreCase = true) -> "Online • Curiosidade"
+        else -> "Offline • Local"
     }
 
     var conversationsExpanded by remember { mutableStateOf(false) }
@@ -72,7 +74,7 @@ fun ConversationTopBar(
             modifier = Modifier
                 .fillMaxWidth()
                 .statusBarsPadding()
-                .padding(horizontal = 8.dp, vertical = 8.dp),
+                .padding(horizontal = 8.dp, vertical = 7.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
