@@ -494,9 +494,11 @@ fun OffiaChatScreen() {
 
         generationJob = scope.launch {
             busy = true
+            val curiosityStartedAt = System.nanoTime()
             status = "Online • buscando fontes públicas…"
             val answer = StringBuilder()
             try {
+                val acquisitionStartedAt = System.nanoTime()
                 val result = curiosityProvider.acquire(
                     CuriosityRequest(
                         userQuestion = userQuestion,
@@ -504,6 +506,7 @@ fun OffiaChatScreen() {
                         maxSources = 3,
                     ),
                 )
+                val acquisitionLatencyMs = (System.nanoTime() - acquisitionStartedAt) / 1_000_000L
                 messages[curiosityIndex] = messages[curiosityIndex].copy(
                     generation = messages[curiosityIndex].generation?.copy(publicSources = result.sources),
                 )
@@ -549,13 +552,14 @@ fun OffiaChatScreen() {
 
                 status = "Offline • Memoria.ia resolveu contexto público • gerando resposta final…"
                 generating = true
-                val generationStartedAt = System.currentTimeMillis()
+                val generationStartedAt = System.nanoTime()
                 val prompt = materializeResolvedCuriosityPrompt(userQuestion, publicContext.resolution)
                 engine.sendUserPrompt(prompt, predictLength = 512).collect { token ->
                     answer.append(token)
                     messages[curiosityIndex] = messages[curiosityIndex].copy(text = answer.toString())
                 }
-                val generationLatency = System.currentTimeMillis() - generationStartedAt
+                val generationLatency = (System.nanoTime() - generationStartedAt) / 1_000_000L
+                val totalLatencyMs = (System.nanoTime() - curiosityStartedAt) / 1_000_000L
                 messages[curiosityIndex] = messages[curiosityIndex].copy(
                     text = answer.toString().ifBlank { "As fontes foram memorizadas, mas o modelo não gerou uma resposta final." },
                     generation = messages[curiosityIndex].generation?.copy(
@@ -564,7 +568,7 @@ fun OffiaChatScreen() {
                     ),
                 )
                 saveWorkspace()
-                status = "Offline • Curiosidade concluída • ${result.sources.size} fonte(s) memorizada(s) • ${publicLearning.storedMemoryIds.size} memória(s) pública(s)"
+                status = "Offline • Curiosidade • web ${formatCuriosityLatencyMs(acquisitionLatencyMs)} • memória ${formatCuriosityLatencyMs(publicContext.persistenceLatencyMs)} • resolve ${formatCuriosityLatencyMs(publicContext.resolutionLatencyMs)} • LLM ${formatCuriosityLatencyMs(generationLatency)} • total ${formatCuriosityLatencyMs(totalLatencyMs)}"
             } catch (_: CancellationException) {
                 if (answer.isEmpty()) {
                     messages[curiosityIndex] = messages[curiosityIndex].copy(text = "Curiosidade interrompida.")
