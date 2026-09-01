@@ -63,6 +63,7 @@ fun MessageCard(
         chatStore.externalPublicMemoryIdsUsed(message.memory?.memoryIds.orEmpty())
     }
     val hasPublicEvidence = publicSources.isNotEmpty() || publicKnowledge != null
+    val memoryCount = message.memory?.memoryIds?.size ?: 0
     var improvements by remember(message.id) { mutableStateOf(message.improvements) }
     var improving by remember(message.id) { mutableStateOf(false) }
     var improveError by remember(message.id) { mutableStateOf<String?>(null) }
@@ -140,13 +141,13 @@ fun MessageCard(
         horizontalArrangement = if (isUser) Arrangement.End else Arrangement.Start,
     ) {
         Column(
-            modifier = Modifier.widthIn(max = 680.dp),
+            modifier = Modifier.widthIn(max = if (isUser) 560.dp else 680.dp),
             horizontalAlignment = if (isUser) Alignment.End else Alignment.Start,
         ) {
             Text(
                 text = when {
                     isUser -> "Você"
-                    isCuriosity -> "OFF.IA • Curiosidade"
+                    isCuriosity -> "OFF.IA · Curiosidade"
                     isImproved -> {
                         val provider = when (responseSource) {
                             ResponseSource.OPENAI -> "OpenAI · histórico"
@@ -154,7 +155,7 @@ fun MessageCard(
                             ResponseSource.MA2A -> "M2A2"
                             else -> "Externa"
                         }
-                        "OFF.IA • Melhorada · $provider"
+                        "OFF.IA · Melhorada · $provider"
                     }
                     else -> "OFF.IA"
                 },
@@ -164,7 +165,7 @@ fun MessageCard(
                 Text(model, style = MaterialTheme.typography.labelSmall)
             }
             Surface(
-                tonalElevation = if (isUser) 1.dp else 0.dp,
+                tonalElevation = if (isUser) 2.dp else 0.dp,
                 shape = MaterialTheme.shapes.large,
             ) {
                 RichMessageContent(
@@ -183,15 +184,21 @@ fun MessageCard(
                     }
                     if (!isCuriosity || message.memory != null) {
                         TextButton(onClick = { memoryExpanded = !memoryExpanded }) {
-                            Text(if (memoryExpanded) "Ocultar" else "Memória")
+                            Text(
+                                when {
+                                    memoryExpanded -> "Ocultar memória"
+                                    memoryCount > 0 -> "Memória $memoryCount"
+                                    else -> "Memória"
+                                },
+                            )
                         }
                     }
                     if (hasPublicEvidence) {
                         TextButton(onClick = { sourcesExpanded = !sourcesExpanded }) {
                             Text(
                                 when {
-                                    sourcesExpanded -> "Ocultar"
-                                    publicSources.isNotEmpty() -> "Fontes (${publicSources.size})"
+                                    sourcesExpanded -> "Ocultar fontes"
+                                    publicSources.isNotEmpty() -> "Fontes ${publicSources.size}"
                                     else -> "Conhecimento"
                                 },
                             )
@@ -296,7 +303,7 @@ fun MessageCard(
         }
     }
 
-    pendingConfirmation?.let { kind ->
+    pendingConfirmation?.let {
         AlertDialog(
             onDismissRequest = { pendingConfirmation = null },
             title = { Text("Enviar pela M2A2?") },
@@ -337,7 +344,7 @@ private fun ImprovementPanel(
     onShare: () -> Unit,
 ) {
     Surface(
-        tonalElevation = 2.dp,
+        tonalElevation = 1.dp,
         shape = MaterialTheme.shapes.large,
         modifier = Modifier.fillMaxWidth(),
     ) {
@@ -346,7 +353,7 @@ private fun ImprovementPanel(
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Text(
-                "M2A2 • resposta melhorada",
+                "M2A2 · resposta melhorada",
                 style = MaterialTheme.typography.titleSmall,
             )
             if (showDiagnostics) {
@@ -375,21 +382,25 @@ private fun PublicSourcesPanel(
     onOpen: (CuriositySource) -> Unit,
 ) {
     Surface(
-        tonalElevation = 2.dp,
+        tonalElevation = 1.dp,
         shape = MaterialTheme.shapes.large,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Text("Fontes", style = MaterialTheme.typography.titleSmall)
+            val learnedCount = audit?.storedMemoryIds?.size ?: 0
+            Text(
+                if (learnedCount > 0) "Fontes · $learnedCount aprendida(s)" else "Fontes",
+                style = MaterialTheme.typography.titleSmall,
+            )
             audit?.let { publicAudit ->
-                Text(
-                    "Memoria.ia aprendeu ${publicAudit.storedMemoryIds.size} registro(s) como conhecimento público.",
-                    style = MaterialTheme.typography.bodySmall,
-                )
                 if (showDiagnostics) {
+                    Text(
+                        "Memoria.ia aprendeu ${publicAudit.storedMemoryIds.size} registro(s) como conhecimento público.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
                     HorizontalDivider()
                     Text("Classe: ${publicAudit.knowledgeClass}", style = MaterialTheme.typography.bodySmall)
                     Text(
@@ -409,11 +420,13 @@ private fun PublicSourcesPanel(
                 }
             }
             sources.forEachIndexed { index, source ->
-                if (index > 0 || audit != null) HorizontalDivider()
+                if (index > 0) HorizontalDivider()
                 Text("${index + 1}. ${source.title}", style = MaterialTheme.typography.bodyMedium)
-                Text(source.domain, style = MaterialTheme.typography.labelSmall)
+                if (showDiagnostics) {
+                    Text(source.domain, style = MaterialTheme.typography.labelSmall)
+                }
                 source.excerpt?.takeIf { it.isNotBlank() }?.let {
-                    Text(it.take(if (showDiagnostics) 320 else 160), style = MaterialTheme.typography.bodySmall)
+                    Text(it.take(if (showDiagnostics) 320 else 120), style = MaterialTheme.typography.bodySmall)
                 }
                 TextButton(onClick = { onOpen(source) }) { Text("Abrir fonte") }
             }
@@ -428,30 +441,32 @@ private fun ResponseMemoryPanel(
     showDiagnostics: Boolean,
 ) {
     Surface(
-        tonalElevation = 2.dp,
+        tonalElevation = 1.dp,
         shape = MaterialTheme.shapes.large,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Text("Memoria.ia", style = MaterialTheme.typography.titleSmall)
             if (memory == null) {
-                Text("Esta resposta não utilizou contexto registrado da Memoria.ia.", style = MaterialTheme.typography.bodySmall)
+                Text("Memoria.ia · sem contexto usado", style = MaterialTheme.typography.titleSmall)
+                if (showDiagnostics) {
+                    Text("Esta resposta não utilizou contexto registrado da Memoria.ia.", style = MaterialTheme.typography.bodySmall)
+                }
             } else {
                 Text(
-                    "${memory.memoryIds.size} memória(s) usada(s) • ${memory.learnedMemoryIds.size} aprendida(s)",
-                    style = MaterialTheme.typography.bodySmall,
+                    "Memoria.ia · ${memory.memoryIds.size} usada(s) · ${memory.learnedMemoryIds.size} aprendida(s)",
+                    style = MaterialTheme.typography.titleSmall,
                 )
                 if (externalPublicMemoryIdsUsed.isNotEmpty()) {
                     Text(
-                        "Conhecimento público usado: ${externalPublicMemoryIdsUsed.size} registro(s)",
+                        "Conhecimento público: ${externalPublicMemoryIdsUsed.size}",
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
                 memory.confidence?.let {
-                    Text("Confiança: ${"%.3f".format(it)}", style = MaterialTheme.typography.bodySmall)
+                    Text("Confiança ${"%.3f".format(it)}", style = MaterialTheme.typography.bodySmall)
                 }
                 if (showDiagnostics) {
                     HorizontalDivider()
