@@ -6,8 +6,8 @@ on:
     branches:
       - main
       - feat/android-mvp
-      - feat/android-kv-cache-q8-default-v2
-      - integration/memoria-rc2
+      - feat/android-chat-ux-v3
+      - fix/android-modern-skin-memoria-rc2
     paths:
       - 'android/**'
       - '.github/workflows/android-apk.yml'
@@ -30,6 +30,32 @@ jobs:
       - name: Checkout OFF.IA
         uses: actions/checkout@v6
 
+      - name: Verify single product launcher source
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          path = 'android/app/src/main/AndroidManifest.xml'
+          root = ET.parse(path).getroot()
+          ns = '{http://schemas.android.com/apk/res/android}'
+          app = root.find('application')
+          activities = app.findall('activity') if app is not None else []
+          names = [a.get(ns + 'name') for a in activities]
+          if names != ['.LauncherActivity']:
+              raise SystemExit(f'Expected exactly .LauncherActivity, found: {names}')
+          activity = activities[0]
+          has_main = False
+          has_launcher = False
+          for intent in activity.findall('intent-filter'):
+              for action in intent.findall('action'):
+                  has_main |= action.get(ns + 'name') == 'android.intent.action.MAIN'
+              for category in intent.findall('category'):
+                  has_launcher |= category.get(ns + 'name') == 'android.intent.category.LAUNCHER'
+          if not (has_main and has_launcher):
+              raise SystemExit('LauncherActivity is missing MAIN/LAUNCHER intent filter')
+          print('Single product launcher verified:', names[0])
+          PY
+
       - name: Fetch pinned llama.cpp
         shell: bash
         run: |
@@ -47,7 +73,7 @@ jobs:
           grep -q "ctx_params.type_k = GGML_TYPE_Q8_0" android/vendor/llama.cpp/examples/llama.android/lib/src/main/cpp/ai_chat.cpp
           grep -q "ctx_params.type_v = GGML_TYPE_Q8_0" android/vendor/llama.cpp/examples/llama.android/lib/src/main/cpp/ai_chat.cpp
 
-      - name: Checkout pinned Memoria.ia mobile runtime
+      - name: Checkout pinned Memoria.ia RC2 mobile runtime
         uses: actions/checkout@v6
         with:
           repository: marceloroldao/memoria.ia
@@ -83,6 +109,9 @@ jobs:
         uses: gradle/actions/setup-gradle@v5
         with:
           gradle-version: '8.14.3'
+
+      - name: Run Curiosity public-memory unit tests
+        run: gradle -p android :app:testDebugUnitTest --no-daemon --stacktrace
 
       - name: Build full offline debug APK
         run: gradle -p android :app:assembleDebug --no-daemon --stacktrace
