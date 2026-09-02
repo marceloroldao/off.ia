@@ -181,23 +181,15 @@ Java_ia_off_NativeMemoryGateway_nativeLearnExternal(JNIEnv* env, jobject, jlong 
         return nullptr;
     }
     try {
-        const std::string request = from_jstring(env, request_json);
-        memoria_mobile_buffer in{
-            reinterpret_cast<const uint8_t*>(request.data()), request.size()
-        };
-        memoria_mobile_buffer out{nullptr, 0};
-        const auto status = memoria_mobile_learn_external_knowledge_json(runtime, in, &out);
-        const std::string response = take_response(out);
-        if (status != MEMORIA_MOBILE_OK) {
-            std::string detail = "Memoria.ia external_public status=" +
-                std::to_string(static_cast<int>(status));
-            if (!response.empty()) {
-                detail += " response=" + response.substr(0, 512);
-            }
-            throw_illegal_state(env, detail);
-            return nullptr;
-        }
-        return env->NewStringUTF(response.c_str());
+        (void) request_json;
+        // Memoria.ia v1.0.0-rc2 exposes ABI v1 but does not yet export the
+        // additive external-public learning symbol. Keep the JNI entry point
+        // stable and fail explicitly until that ABI is released.
+        throw_illegal_state(
+            env,
+            "Memoria.ia RC2 nao oferece aprendizado external_public na ABI movel"
+        );
+        return nullptr;
     } catch (const std::exception& e) {
         throw_illegal_state(env, e.what());
         return nullptr;
