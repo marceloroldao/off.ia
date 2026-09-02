@@ -12,9 +12,9 @@ Brand assets: [`assets/branding/`](assets/branding/)
 
 ## Status
 
-**Pre-MVP integration scaffold.** The repository now establishes the application boundaries, local llama.cpp adapter, GGUF model registry, observability skeleton and cross-platform unit CI. It deliberately does **not** duplicate Memoria.ia or BDR internals.
+**Android integration candidate.** The repository includes the application boundaries, local llama.cpp runtime, GGUF model handling, Memoria.ia mobile ABI, durable Resolutive-DB path, observability and Android CI. It deliberately does **not** duplicate Memoria.ia or BDR internals.
 
-A stable end-to-end `Memoria.ia -> BDR v1.1` product path is currently gated by a dependency request because the validated BDR v1.1 Memoria.ia adapter is still on `experiment/bdr-v110-atomic`, not Memoria.ia `main`. See `docs/DEPENDENCY_REQUESTS.md`.
+The Android build is pinned to the corrected Memoria.ia v1.0.0-rc2 commit `162604240f22cfab6449ebe48f4eb764d6e76d0c`. The remaining product gate is physical-device acceptance: same-session paraphrase, kill/restart durable recall and airplane-mode end-to-end behavior. See `docs/DEPENDENCY_REQUESTS.md`.
 
 ## Architecture
 
@@ -72,7 +72,7 @@ This repository will not claim that milestone until it is run with a real GGUF m
 
 ## Scope exclusions for this phase
 
-No Android, ESP32, MA2A federation, cloud fallback, automatic multi-GB model download, or direct Internet exposure of llama.cpp.
+No ESP32, MA2A federation, automatic cloud fallback, automatic multi-GB model download, or direct Internet exposure of llama.cpp. Android is the active product target.
 
 ## Licensing
 

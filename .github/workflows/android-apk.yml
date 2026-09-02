@@ -7,6 +7,7 @@ on:
       - main
       - feat/android-mvp
       - feat/android-kv-cache-q8-default-v2
+      - integration/memoria-rc2
     paths:
       - 'android/**'
       - '.github/workflows/android-apk.yml'
@@ -50,7 +51,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           repository: marceloroldao/memoria.ia
-          ref: dc73cbcdddfe20e0729e7e6bdea4697f7e8308cd
+          ref: 162604240f22cfab6449ebe48f4eb764d6e76d0c
           path: android/vendor/memoria.ia
 
       - name: Checkout pinned Resolutive-DB Android ABI
