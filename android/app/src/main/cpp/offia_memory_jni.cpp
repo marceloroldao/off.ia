@@ -182,12 +182,12 @@ Java_ia_off_NativeMemoryGateway_nativeLearnExternal(JNIEnv* env, jobject, jlong 
     }
     try {
         (void) request_json;
-        // Memoria.ia v1.0.0-rc2 exposes ABI v1 but does not yet export the
+        // Memoria.ia v1.0.0-rc4 exposes ABI v1 but does not yet export the
         // additive external-public learning symbol. Keep the JNI entry point
         // stable and fail explicitly until that ABI is released.
         throw_illegal_state(
             env,
-            "Memoria.ia RC2 nao oferece aprendizado external_public na ABI movel"
+            "Memoria.ia RC4 nao oferece aprendizado external_public na ABI movel"
         );
         return nullptr;
     } catch (const std::exception& e) {

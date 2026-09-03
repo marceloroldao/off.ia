@@ -26,6 +26,9 @@ android {
         targetSdk = 36
         versionCode = 6
         versionName = "0.1.0-alpha.6"
+        buildConfigField("String", "MEMORIA_IA_VERSION", "\"v1.0.0-rc4\"")
+        buildConfigField("String", "MEMORIA_IA_COMMIT", "\"973564683762fde26c36a6993a2982f804504bc1\"")
+        buildConfigField("String", "BDR_COMMIT", "\"1f6b7ccbe16bdfed2f1b5dcebceb17887bf6916e\"")
 
         ndk {
             abiFilters += listOf("arm64-v8a")
@@ -50,7 +53,10 @@ android {
         }
     }
 
-    buildFeatures { compose = true }
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

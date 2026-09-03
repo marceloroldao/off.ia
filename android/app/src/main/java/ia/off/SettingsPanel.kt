@@ -200,6 +200,12 @@ fun SettingsPanel(
                     checked = settings.laboratoryMode,
                     onCheckedChange = { update(settings.copy(laboratoryMode = it)) },
                 )
+                if (settings.laboratoryMode) {
+                    Text("Memoria.ia: ${BuildConfig.MEMORIA_IA_VERSION}", style = MaterialTheme.typography.labelMedium)
+                    Text("Memoria.ia commit: ${BuildConfig.MEMORIA_IA_COMMIT.take(8)}", style = MaterialTheme.typography.bodySmall)
+                    Text("BDR commit: ${BuildConfig.BDR_COMMIT.take(8)}", style = MaterialTheme.typography.bodySmall)
+                    Text("ABI móvel: v1", style = MaterialTheme.typography.bodySmall)
+                }
             }
 
             TextButton(onClick = onDismiss, modifier = Modifier.align(Alignment.End)) {
