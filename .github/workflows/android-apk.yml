@@ -95,9 +95,9 @@ jobs:
           grep -q 'version = "1.0.0rc4"' android/vendor/memoria.ia/pyproject.toml
           grep -q '#define MEMORIA_MOBILE_ABI_VERSION 1' android/vendor/memoria.ia/include/memoria_mobile.h
           test "$(git -C android/vendor/resolutive-DB rev-parse HEAD)" = "1f6b7ccbe16bdfed2f1b5dcebceb17887bf6916e"
-          grep -q 'MEMORIA_IA_VERSION, "\"v1.0.0-rc4\""' android/app/build.gradle.kts
-          grep -q 'MEMORIA_IA_COMMIT, "\"973564683762fde26c36a6993a2982f804504bc1\""' android/app/build.gradle.kts
-          grep -q 'BDR_COMMIT, "\"1f6b7ccbe16bdfed2f1b5dcebceb17887bf6916e\""' android/app/build.gradle.kts
+          grep -Fq 'buildConfigField("String", "MEMORIA_IA_VERSION", "\"v1.0.0-rc4\"")' android/app/build.gradle.kts
+          grep -Fq 'buildConfigField("String", "MEMORIA_IA_COMMIT", "\"973564683762fde26c36a6993a2982f804504bc1\"")' android/app/build.gradle.kts
+          grep -Fq 'buildConfigField("String", "BDR_COMMIT", "\"1f6b7ccbe16bdfed2f1b5dcebceb17887bf6916e\"")' android/app/build.gradle.kts
 
       - name: Set up JDK 17
         uses: actions/setup-java@v5
