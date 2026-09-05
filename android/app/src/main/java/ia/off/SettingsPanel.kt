@@ -1,6 +1,8 @@
 package ia.off
 
 import android.app.Activity
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.ContextWrapper
 import androidx.compose.foundation.clickable
@@ -39,6 +41,9 @@ private tailrec fun Context.findActivity(): Activity? = when (this) {
     is ContextWrapper -> baseContext.findActivity()
     else -> null
 }
+
+private fun shortIdentity(value: String): String =
+    if (value == "desconhecida") value else value.take(8)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -201,10 +206,33 @@ fun SettingsPanel(
                     onCheckedChange = { update(settings.copy(laboratoryMode = it)) },
                 )
                 if (settings.laboratoryMode) {
+                    val diagnostics = listOf(
+                        "OFF.IA: ${BuildConfig.VERSION_NAME}",
+                        "OFF.IA commit: ${BuildConfig.OFFIA_COMMIT}",
+                        "Memoria.ia: ${BuildConfig.MEMORIA_IA_VERSION}",
+                        "Memoria.ia commit: ${BuildConfig.MEMORIA_IA_COMMIT}",
+                        "BDR: ${BuildConfig.BDR_VERSION}",
+                        "BDR commit: ${BuildConfig.BDR_COMMIT}",
+                        "llama.cpp commit: ${BuildConfig.LLAMA_CPP_COMMIT}",
+                        "KV-cache: ${BuildConfig.KV_CACHE_TYPE}",
+                        "ABI móvel: ${BuildConfig.MEMORIA_MOBILE_ABI}",
+                    ).joinToString("\n")
+
+                    Text("OFF.IA: ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.labelMedium)
+                    Text("OFF.IA commit: ${shortIdentity(BuildConfig.OFFIA_COMMIT)}", style = MaterialTheme.typography.bodySmall)
                     Text("Memoria.ia: ${BuildConfig.MEMORIA_IA_VERSION}", style = MaterialTheme.typography.labelMedium)
-                    Text("Memoria.ia commit: ${BuildConfig.MEMORIA_IA_COMMIT.take(8)}", style = MaterialTheme.typography.bodySmall)
-                    Text("BDR commit: ${BuildConfig.BDR_COMMIT.take(8)}", style = MaterialTheme.typography.bodySmall)
-                    Text("ABI móvel: v1", style = MaterialTheme.typography.bodySmall)
+                    Text("Memoria.ia commit: ${shortIdentity(BuildConfig.MEMORIA_IA_COMMIT)}", style = MaterialTheme.typography.bodySmall)
+                    Text("BDR: ${BuildConfig.BDR_VERSION}", style = MaterialTheme.typography.labelMedium)
+                    Text("BDR commit: ${shortIdentity(BuildConfig.BDR_COMMIT)}", style = MaterialTheme.typography.bodySmall)
+                    Text("llama.cpp commit: ${shortIdentity(BuildConfig.LLAMA_CPP_COMMIT)}", style = MaterialTheme.typography.bodySmall)
+                    Text("KV-cache: ${BuildConfig.KV_CACHE_TYPE}", style = MaterialTheme.typography.bodySmall)
+                    Text("ABI móvel: ${BuildConfig.MEMORIA_MOBILE_ABI}", style = MaterialTheme.typography.bodySmall)
+                    OutlinedButton(onClick = {
+                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        clipboard.setPrimaryClip(ClipData.newPlainText("OFF.IA diagnóstico", diagnostics))
+                    }) {
+                        Text("Copiar diagnóstico completo")
+                    }
                 }
             }
 
