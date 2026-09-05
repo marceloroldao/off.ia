@@ -33,7 +33,11 @@ import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
-data class GgufProbe(val sizeBytes: Long, val version: Int)
+data class GgufProbe(
+    val sizeBytes: Long,
+    val version: Int,
+    val runtimeProfile: ModelRuntimeProfile? = null,
+)
 
 private const val PREFS = "offia-local"
 private const val PREF_MODEL_PATH = "model-path"
@@ -128,11 +132,13 @@ private suspend fun loadLocalModel(engine: InferenceEngine, file: File): GgufPro
     }
     try {
         engine.loadModel(file.absolutePath)
+        val runtimeProfile = parseModelRuntimeProfile(engine.modelMetadata())
         engine.setSystemPrompt(SYSTEM_PROMPT)
+        return probe.copy(runtimeProfile = runtimeProfile)
     } catch (e: Exception) {
         throw IOException(modelLoadMessage(e, probe), e)
     }
-    return probe
+    error("Unreachable after successful model load")
 }
 
 private fun downloadStatusText(
@@ -591,7 +597,12 @@ fun OffiaChatScreen() {
             ConversationTopBar(
                 status = status,
                 modelSummary = modelProbe?.let {
-                    "${modelName ?: "GGUF"} • GGUF v${it.version} • ${it.sizeBytes / (1024 * 1024)} MB"
+                    buildString {
+                        append("${modelName ?: "GGUF"} • GGUF v${it.version} • ${it.sizeBytes / (1024 * 1024)} MB")
+                        it.runtimeProfile?.let { profile ->
+                            append("\nTemplate: ${profile.displayLabel}")
+                        }
+                    }
                 },
                 activeSession = activeSession(),
                 sessions = sessions,
