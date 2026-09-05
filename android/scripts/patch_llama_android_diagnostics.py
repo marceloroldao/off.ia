@@ -3,6 +3,7 @@ from pathlib import Path
 root = Path(__file__).resolve().parents[1] / "vendor" / "llama.cpp"
 cpp = root / "examples/llama.android/lib/src/main/cpp/ai_chat.cpp"
 kt = root / "examples/llama.android/lib/src/main/java/com/arm/aichat/internal/InferenceEngineImpl.kt"
+interface = root / "examples/llama.android/lib/src/main/java/com/arm/aichat/InferenceEngine.kt"
 
 cpp_text = cpp.read_text(encoding="utf-8")
 
@@ -25,21 +26,13 @@ if needle not in cpp_text:
 cpp_text = cpp_text.replace(needle, replacement, 1)
 
 marker = '''    g_model = model;\n    return 0;\n}\n\nstatic llama_context *init_context'''
-addition = '''    g_model = model;\n    return 0;\n}\n\nextern "C"\nJNIEXPORT jstring JNICALL\nJava_com_arm_aichat_internal_InferenceEngineImpl_lastLoadError(JNIEnv *env, jobject) {\n    return env->NewStringUTF(g_last_load_error.c_str());\n}\n\nstatic llama_context *init_context'''
+addition = '''    g_model = model;\n    return 0;\n}\n\nextern "C"\nJNIEXPORT jstring JNICALL\nJava_com_arm_aichat_internal_InferenceEngineImpl_lastLoadError(JNIEnv *env, jobject) {\n    return env->NewStringUTF(g_last_load_error.c_str());\n}\n\nextern "C"\nJNIEXPORT jstring JNICALL\nJava_com_arm_aichat_internal_InferenceEngineImpl_modelMetadataNative(JNIEnv *env, jobject) {\n    char architecture[128] = {0};\n    if (g_model != nullptr) {\n        llama_model_meta_val_str(g_model, "general.architecture", architecture, sizeof(architecture));\n    }\n    const char * chat_template = g_model != nullptr ? llama_model_chat_template(g_model, nullptr) : nullptr;\n    std::string metadata(architecture);\n    metadata.push_back('\\n');\n    if (chat_template != nullptr) metadata.append(chat_template);\n    return env->NewStringUTF(metadata.c_str());\n}\n\nstatic llama_context *init_context'''
 if marker not in cpp_text:
     raise SystemExit("ai_chat.cpp anchor 3 not found")
 cpp_text = cpp_text.replace(marker, addition, 1)
 
-# Some third-party GGUFs omit tokenizer.chat_template. llama.cpp still creates a
-# ChatML fallback template; SmolLM2 uses the same <|im_start|>/<|im_end|> family.
-chat_template_probe = 'const bool has_chat_template = common_chat_templates_was_explicit(g_chat_templates.get());'
-count = cpp_text.count(chat_template_probe)
-if count < 2:
-    raise SystemExit(f"expected at least 2 chat-template probes, found {count}")
-cpp_text = cpp_text.replace(
-    chat_template_probe,
-    'const bool has_chat_template = true; // OFF.IA: use llama.cpp ChatML fallback when GGUF metadata omits a template',
-)
+# Preserve llama.cpp's native behavior: use the GGUF template only when explicit.
+# Missing template metadata intentionally remains a plain-text fallback.
 
 # Tiny models such as SmolLM2-135M can fall into short repetition loops. Keep the
 # upstream sampler chain but enable conservative repetition/DRY penalties.
@@ -63,6 +56,24 @@ replacement = '''                load(pathToModel).let { code ->\n              
 if needle not in kt_text:
     raise SystemExit("InferenceEngineImpl.kt anchor 2 not found")
 kt_text = kt_text.replace(needle, replacement, 1)
+needle = '''    @FastNative\n    private external fun lastLoadError(): String\n\n    @FastNative\n    private external fun prepare(): Int\n'''
+replacement = '''    @FastNative\n    private external fun lastLoadError(): String\n\n    @FastNative\n    private external fun modelMetadataNative(): String\n\n    @FastNative\n    private external fun prepare(): Int\n'''
+if needle not in kt_text:
+    raise SystemExit("InferenceEngineImpl.kt metadata native anchor not found")
+kt_text = kt_text.replace(needle, replacement, 1)
+
+needle = '''    override suspend fun loadModel(pathToModel: String) =\n'''
+replacement = '''    override suspend fun modelMetadata(): String =\n        withContext(llamaDispatcher) {\n            check(_state.value is InferenceEngine.State.ModelReady) {\n                "Model metadata requested before model ready"\n            }\n            modelMetadataNative()\n        }\n\n    override suspend fun loadModel(pathToModel: String) =\n'''
+if needle not in kt_text:
+    raise SystemExit("InferenceEngineImpl.kt modelMetadata method anchor not found")
+kt_text = kt_text.replace(needle, replacement, 1)
 kt.write_text(kt_text, encoding="utf-8")
 
-print(f"OFFIA_LLAMA_CHAT_V4: diagnostics + ChatML fallback + anti-repeat patched ({count} chat sites)")
+interface_text = interface.read_text(encoding="utf-8")
+needle = '''    suspend fun loadModel(pathToModel: String)\n\n'''
+replacement = '''    suspend fun loadModel(pathToModel: String)\n\n    /** Returns general.architecture plus the exact embedded chat template. */\n    suspend fun modelMetadata(): String\n\n'''
+if needle not in interface_text:
+    raise SystemExit("InferenceEngine.kt metadata anchor not found")
+interface.write_text(interface_text.replace(needle, replacement, 1), encoding="utf-8")
+
+print("OFFIA_LLAMA_CHAT_V5: diagnostics + GGUF-native template detection + safe plain fallback + anti-repeat patched")
