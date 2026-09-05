@@ -64,6 +64,7 @@ fun SettingsPanel(
     var settings by remember { mutableStateOf(store.load()) }
     var installedModels by remember { mutableStateOf(modelManager.installedModels()) }
     var deleteCandidate by remember { mutableStateOf<InstalledModel?>(null) }
+    var detailsCandidate by remember { mutableStateOf<InstalledModel?>(null) }
     var modelSelectionError by remember { mutableStateOf<String?>(null) }
     val defaultModel = ModelCatalog.defaultModel
     val downloadActive = modelDownloadState is ModelDownloadState.Downloading ||
@@ -114,7 +115,7 @@ fun SettingsPanel(
                     style = MaterialTheme.typography.labelMedium,
                 )
                 Text(
-                    "Toque em um modelo instalado para ativá-lo. O modelo ativo não pode ser excluído.",
+                    "Toque em um modelo instalado para ativá-lo. Use Detalhes para inspecionar o arquivo sem trocar o modelo ativo.",
                     style = MaterialTheme.typography.bodySmall,
                 )
                 installedModels.forEach { model ->
@@ -122,6 +123,7 @@ fun SettingsPanel(
                         model = model,
                         enabled = !downloadActive,
                         onSelect = { selectModel(model) },
+                        onDetails = { detailsCandidate = model },
                         onDelete = { deleteCandidate = model },
                     )
                 }
@@ -243,6 +245,37 @@ fun SettingsPanel(
         }
     }
 
+    detailsCandidate?.let { candidate ->
+        val gguf = candidate.ggufVersion?.let { "GGUF v$it" } ?: "GGUF inválido/desconhecido"
+        val runtime = if (candidate.active) modelSummary else null
+        AlertDialog(
+            onDismissRequest = { detailsCandidate = null },
+            title = { Text("Detalhes do modelo") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(candidate.name, style = MaterialTheme.typography.titleSmall)
+                    Text("Estado: ${if (candidate.active) "Instalado • ativo ✓" else "Instalado"}")
+                    Text("Formato: $gguf")
+                    Text("Tamanho: ${candidate.sizeBytes.formatStorageSize()}")
+                    Text("Armazenamento: privado da OFF.IA")
+                    if (!runtime.isNullOrBlank()) {
+                        HorizontalDivider()
+                        Text("Runtime carregado", style = MaterialTheme.typography.labelMedium)
+                        Text(runtime, style = MaterialTheme.typography.bodySmall)
+                    } else if (!candidate.active) {
+                        Text(
+                            "Arquitetura e template são confirmados pelo llama.cpp quando este modelo é carregado.",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { detailsCandidate = null }) { Text("Fechar") }
+            },
+        )
+    }
+
     deleteCandidate?.let { candidate ->
         AlertDialog(
             onDismissRequest = { deleteCandidate = null },
@@ -301,6 +334,7 @@ private fun InstalledModelRow(
     model: InstalledModel,
     enabled: Boolean,
     onSelect: () -> Unit,
+    onDetails: () -> Unit,
     onDelete: () -> Unit,
 ) {
     Row(
@@ -320,7 +354,10 @@ private fun InstalledModelRow(
             val state = if (model.active) "Instalado • ativo" else "Instalado • toque para ativar"
             Text("$gguf • ${model.sizeBytes.formatStorageSize()} • $state", style = MaterialTheme.typography.bodySmall)
         }
-        TextButton(enabled = enabled && !model.active, onClick = onDelete) { Text("Excluir") }
+        Column(horizontalAlignment = Alignment.End) {
+            TextButton(onClick = onDetails) { Text("Detalhes") }
+            TextButton(enabled = enabled && !model.active, onClick = onDelete) { Text("Excluir") }
+        }
     }
 }
 
