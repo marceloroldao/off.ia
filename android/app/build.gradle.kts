@@ -26,11 +26,11 @@ android {
         applicationId = "ia.off"
         minSdk = 33
         targetSdk = 36
-        versionCode = 6
-        versionName = "0.1.0-alpha.6"
+        versionCode = 7
+        versionName = "0.1.0-alpha.7"
         buildConfigField("String", "OFFIA_COMMIT", "\"$offiaBuildCommit\"")
-        buildConfigField("String", "MEMORIA_IA_VERSION", "\"v1.0.0-rc4\"")
-        buildConfigField("String", "MEMORIA_IA_COMMIT", "\"973564683762fde26c36a6993a2982f804504bc1\"")
+        buildConfigField("String", "MEMORIA_IA_VERSION", "\"v1.0.0-rc5\"")
+        buildConfigField("String", "MEMORIA_IA_COMMIT", "\"1efced0caceb00ce16cebcdd98338631d254182d\"")
         buildConfigField("String", "BDR_VERSION", "\"desconhecida\"")
         buildConfigField("String", "BDR_COMMIT", "\"1f6b7ccbe16bdfed2f1b5dcebceb17887bf6916e\"")
         buildConfigField("String", "LLAMA_CPP_COMMIT", "\"ca3d5a3e10d53f7ea672cb9b6178faca3e2807bc\"")
