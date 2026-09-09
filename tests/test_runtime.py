@@ -2,7 +2,7 @@ from dataclasses import dataclass, field
 
 import pytest
 
-from offia.adapters.memoria import CognitivePacketEnvelope, ResolvedContext
+from offia.adapters.memoria import CognitivePacketEnvelope, ModelClaim, ResolvedContext
 from offia.runtime import OfflineRuntime
 
 
@@ -11,6 +11,7 @@ class FakeMemoria:
         self.resolve_calls = 0
         self.learn_calls = []
         self.learn_user_calls = []
+        self.validate_calls = []
         self.flush_calls = 0
 
     def resolve(self, message):
@@ -24,6 +25,10 @@ class FakeMemoria:
     def learn(self, text):
         self.learn_calls.append(text)
         return ("mem-legacy",)
+
+    def validate_model_response(self, *, response_id, response_text, claims):
+        self.validate_calls.append((response_id, response_text, tuple(claims)))
+        return tuple(f"response:{response_id}:claim:{i}" for i, _claim in enumerate(claims))
 
     def flush(self):
         self.flush_calls += 1
@@ -71,19 +76,21 @@ class Response:
     provider: str = "local"
     model: str = "fake-local"
     usage: Usage = field(default_factory=Usage)
+    claims: tuple[ModelClaim, ...] = ()
 
 
 class FakeLanguage:
     provider_name = "local"
     model_name = "fake-local"
 
-    def __init__(self, text="24 V"):
+    def __init__(self, text="24 V", claims=()):
         self.last_context = None
         self.text = text
+        self.claims = tuple(claims)
 
     def generate(self, *, message, context):
         self.last_context = tuple(context)
-        return Response(self.text)
+        return Response(self.text, claims=self.claims)
 
 
 def test_memory_context_flows_to_language_and_only_user_input_enters_trusted_write_path():
@@ -99,14 +106,59 @@ def test_memory_context_flows_to_language_and_only_user_input_enters_trusted_wri
     assert result.metrics.memory_hit is True
     assert result.metrics.retrieved_memory_ids == ("mem-1",)
     assert result.metrics.learned_memory_ids == ("mem-user",)
+    assert result.metrics.validated_model_evidence_ids == ()
     assert result.metrics.input_tokens == 11
     assert result.metrics.output_tokens == 3
     assert result.metrics.provider == "local"
 
     assert memoria.learn_user_calls == ["What voltage is the main supply?"]
     assert memoria.learn_calls == []
+    assert memoria.validate_calls == []
     assert "24 V" not in memoria.learn_user_calls
     assert memoria.flush_calls == 1
+
+
+def test_structured_model_claims_only_enter_response_validator_boundary():
+    claim = ModelClaim("main supply", "voltage", "99 V", confidence=0.8)
+    memoria = FakeMemoria()
+    language = FakeLanguage("The supply is 99 V", claims=(claim,))
+
+    result = OfflineRuntime(memoria, language).chat(
+        "What voltage is the main supply?",
+        response_id="turn-1",
+    )
+
+    assert memoria.validate_calls == [
+        ("turn-1", "The supply is 99 V", (claim,))
+    ]
+    assert result.metrics.validated_model_evidence_ids == ("response:turn-1:claim:0",)
+    assert memoria.learn_user_calls == ["What voltage is the main supply?"]
+    assert memoria.learn_calls == []
+    assert all("99 V" not in item for item in memoria.learn_user_calls)
+
+
+def test_structured_claims_fail_closed_without_response_id():
+    claim = ModelClaim("main supply", "voltage", "99 V")
+    memoria = FakeMemoria()
+    language = FakeLanguage("The supply is 99 V", claims=(claim,))
+
+    with pytest.raises(ValueError, match="response_id is required"):
+        OfflineRuntime(memoria, language).chat("What voltage is the main supply?")
+
+    assert memoria.validate_calls == []
+    assert memoria.learn_user_calls == []
+    assert memoria.flush_calls == 0
+
+
+def test_model_claim_transport_validation_fails_closed():
+    with pytest.raises(ValueError, match="subject must be non-empty"):
+        ModelClaim(" ", "voltage", "24 V")
+    with pytest.raises(ValueError, match="predicate must be non-empty"):
+        ModelClaim("main supply", " ", "24 V")
+    with pytest.raises(ValueError, match="object must be non-empty"):
+        ModelClaim("main supply", "voltage", " ")
+    with pytest.raises(ValueError, match=r"confidence must be in \[0, 1\]"):
+        ModelClaim("main supply", "voltage", "24 V", confidence=1.1)
 
 
 def test_cognitive_packet_takes_precedence_over_legacy_text_without_offia_interpretation():
@@ -155,6 +207,7 @@ def test_baseline_bypasses_memoria_and_forwards_full_context():
     assert memoria.resolve_calls == 0
     assert memoria.learn_user_calls == []
     assert memoria.learn_calls == []
+    assert memoria.validate_calls == []
     assert memoria.flush_calls == 0
     assert language.last_context == history
     assert result.context == history
@@ -163,3 +216,4 @@ def test_baseline_bypasses_memoria_and_forwards_full_context():
     assert result.metrics.memory_miss is False
     assert result.metrics.retrieved_context_chars == 0
     assert result.metrics.learned_memory_ids == ()
+    assert result.metrics.validated_model_evidence_ids == ()
