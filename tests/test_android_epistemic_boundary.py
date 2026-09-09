@@ -38,6 +38,40 @@ def test_android_jni_routes_cognitive_operations_to_separate_memoria_symbols():
     assert "call_learn(" not in decide_body
 
 
+def test_android_gateway_uses_context_compiler_for_normal_resolve_cycle():
+    source = Path("android/app/src/main/java/ia/off/NativeMemoryGateway.kt").read_text("utf-8")
+    resolve_body = source.split("override suspend fun resolve(", 1)[1].split(
+        "override suspend fun compileContext", 1
+    )[0]
+
+    assert "nativeCompileContext(requireHandle(), request.toString())" in resolve_body
+    assert "nativeResolve(requireHandle(), request.toString())" not in resolve_body
+    assert 'listOf(json.toString())' in resolve_body
+    assert 'optJSONArray("memory_ids")' in resolve_body
+    assert 'optJSONObject("activation")' in resolve_body
+
+
+def test_android_gateway_quarantines_model_output_after_user_only_learn():
+    source = Path("android/app/src/main/java/ia/off/NativeMemoryGateway.kt").read_text("utf-8")
+    learn_body = source.split("override suspend fun learnTurn", 1)[1].split(
+        "override suspend fun learnExternalKnowledge", 1
+    )[0]
+
+    assert "nativeLearn(requireHandle(), userText, assistantText)" in learn_body
+    assert "validateModelResponse(" in learn_body
+    assert "UUID.randomUUID().toString()" in learn_body
+    assert "candidateMemoryId = validation.candidateMemoryId" in learn_body
+    assert "validationStatus = validation.consistencyStatus" in learn_body
+    assert "decideLearning(" not in learn_body
+
+
+def test_android_prompt_preserves_structured_cognitive_packet():
+    source = Path("android/app/src/main/java/ia/off/MemoryGateway.kt").read_text("utf-8")
+    assert 'COGNITIVE_PACKET_SCHEMA = "\\\"packet_schema\\\":\\\"memoria.cognitive.packet.v1\\\""' in source
+    assert "if (cognitivePacket != null) return materializeCognitivePrompt(userText, cognitivePacket)" in source
+    assert "MAX_COGNITIVE_PACKET_CHARS = 6000" in source
+
+
 def test_android_kotlin_learning_gate_allows_only_trusted_validators():
     source = Path("android/app/src/main/java/ia/off/NativeMemoryGateway.kt").read_text("utf-8")
     assert 'validatorSource in setOf("USER_CONFIRMED", "SENSOR_OBSERVED")' in source
