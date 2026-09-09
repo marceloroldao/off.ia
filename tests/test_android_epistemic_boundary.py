@@ -114,7 +114,12 @@ def test_android_chat_store_persists_epistemic_candidate_and_learning_metadata()
 def test_android_candidate_identity_is_restart_reconstructable_from_factual_turn():
     gateway = Path("android/app/src/main/java/ia/off/NativeMemoryGateway.kt").read_text("utf-8")
     bridge = Path("android/app/src/main/java/ia/off/EpistemicAuditBridge.kt").read_text("utf-8")
+    models = Path("android/app/src/main/java/ia/off/ChatModels.kt").read_text("utf-8")
 
     assert "val responseId = userMemoryIds.first()" in gateway
     assert "mobile:42 -> response:mobile:42" in gateway
     assert "candidate identity can be reconstructed" in bridge
+    assert "val effectiveResponseId: String?" in models
+    assert "get() = responseId ?: learnedMemoryIds.firstOrNull()" in models
+    assert "val effectiveCandidateMemoryId: String?" in models
+    assert 'get() = candidateMemoryId ?: effectiveResponseId?.let { "response:$it" }' in models
