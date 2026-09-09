@@ -59,7 +59,9 @@ def test_android_gateway_quarantines_model_output_after_user_only_learn():
 
     assert "nativeLearn(requireHandle(), userText, assistantText)" in learn_body
     assert "validateModelResponse(" in learn_body
-    assert "UUID.randomUUID().toString()" in learn_body
+    assert "val responseId = userMemoryIds.first()" in learn_body
+    assert "UUID.randomUUID().toString()" not in learn_body
+    assert "EpistemicAuditBridge.record(" in learn_body
     assert "candidateMemoryId = validation.candidateMemoryId" in learn_body
     assert "validationStatus = validation.consistencyStatus" in learn_body
     assert "decideLearning(" not in learn_body
@@ -78,3 +80,46 @@ def test_android_kotlin_learning_gate_allows_only_trusted_validators():
     assert 'put("accepted", accepted)' in source
     assert 'put("candidate_memory_id", candidateMemoryId)' in source
     assert 'check(!json.optBoolean("promoted", true))' in source
+
+
+def test_android_chat_store_persists_epistemic_candidate_and_learning_metadata():
+    models = Path("android/app/src/main/java/ia/off/ChatModels.kt").read_text("utf-8")
+    store = Path("android/app/src/main/java/ia/off/ChatStore.kt").read_text("utf-8")
+
+    assert "private const val SCHEMA_VERSION = 5" in store
+    assert "setOf(2, 3, 4, SCHEMA_VERSION)" in store
+
+    for kotlin_field in (
+        "responseId",
+        "candidateMemoryId",
+        "validationStatus",
+        "learningDecisionId",
+        "learningAccepted",
+        "promotedMemoryId",
+    ):
+        assert f"val {kotlin_field}:" in models
+
+    for json_key in (
+        "response_id",
+        "candidate_memory_id",
+        "validation_status",
+        "learning_decision_id",
+        "learning_accepted",
+        "promoted_memory_id",
+    ):
+        assert f'put("{json_key}"' in store
+        assert f'optString("{json_key}")' in store or f'has("{json_key}")' in store
+
+
+def test_android_candidate_identity_is_restart_reconstructable_from_factual_turn():
+    gateway = Path("android/app/src/main/java/ia/off/NativeMemoryGateway.kt").read_text("utf-8")
+    bridge = Path("android/app/src/main/java/ia/off/EpistemicAuditBridge.kt").read_text("utf-8")
+    models = Path("android/app/src/main/java/ia/off/ChatModels.kt").read_text("utf-8")
+
+    assert "val responseId = userMemoryIds.first()" in gateway
+    assert "mobile:42 -> response:mobile:42" in gateway
+    assert "candidate identity can be reconstructed" in bridge
+    assert "val effectiveResponseId: String?" in models
+    assert "get() = responseId ?: learnedMemoryIds.firstOrNull()" in models
+    assert "val effectiveCandidateMemoryId: String?" in models
+    assert 'get() = candidateMemoryId ?: effectiveResponseId?.let { "response:$it" }' in models
