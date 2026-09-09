@@ -2,7 +2,12 @@ from dataclasses import dataclass, field
 
 import pytest
 
-from offia.adapters.memoria import CognitivePacketEnvelope, ModelClaim, ResolvedContext
+from offia.adapters.memoria import (
+    CognitivePacketEnvelope,
+    LearningDecisionRequest,
+    ModelClaim,
+    ResolvedContext,
+)
 from offia.runtime import OfflineRuntime
 
 
@@ -12,6 +17,7 @@ class FakeMemoria:
         self.learn_calls = []
         self.learn_user_calls = []
         self.validate_calls = []
+        self.learning_decision_calls = []
         self.flush_calls = 0
 
     def resolve(self, message):
@@ -29,6 +35,10 @@ class FakeMemoria:
     def validate_model_response(self, *, response_id, response_text, claims):
         self.validate_calls.append((response_id, response_text, tuple(claims)))
         return tuple(f"response:{response_id}:claim:{i}" for i, _claim in enumerate(claims))
+
+    def apply_learning_decision(self, request):
+        self.learning_decision_calls.append(request)
+        return f"learning:{request.decision_id}" if request.accepted else None
 
     def flush(self):
         self.flush_calls += 1
@@ -161,6 +171,56 @@ def test_model_claim_transport_validation_fails_closed():
         ModelClaim("main supply", "voltage", "24 V", confidence=1.1)
 
 
+def test_explicit_user_confirmation_is_forwarded_to_learning_gate_as_separate_operation():
+    memoria = FakeMemoria()
+    runtime = OfflineRuntime(memoria, FakeLanguage())
+    request = LearningDecisionRequest(
+        decision_id="confirm-turn-1-claim-0",
+        candidate_evidence_id="response:turn-1:claim:0",
+        accepted=True,
+        validator_source="USER_CONFIRMED",
+        validator_id="user-local",
+        reason="user explicitly confirmed the candidate",
+    )
+
+    promoted = runtime.apply_learning_decision(request)
+
+    assert promoted == "learning:confirm-turn-1-claim-0"
+    assert memoria.learning_decision_calls == [request]
+    assert memoria.flush_calls == 1
+    assert memoria.learn_user_calls == []
+    assert memoria.learn_calls == []
+
+
+def test_rejected_learning_decision_creates_no_promoted_evidence():
+    memoria = FakeMemoria()
+    runtime = OfflineRuntime(memoria, FakeLanguage())
+    request = LearningDecisionRequest(
+        decision_id="reject-turn-1-claim-0",
+        candidate_evidence_id="response:turn-1:claim:0",
+        accepted=False,
+        validator_source="USER_CONFIRMED",
+        validator_id="user-local",
+        reason="user rejected the candidate",
+    )
+
+    assert runtime.apply_learning_decision(request) is None
+    assert memoria.learning_decision_calls == [request]
+    assert memoria.flush_calls == 1
+
+
+def test_learning_decision_transport_rejects_untrusted_validator_classes():
+    with pytest.raises(ValueError, match="validator_source must be USER_CONFIRMED or SENSOR_OBSERVED"):
+        LearningDecisionRequest(
+            decision_id="bad-decision",
+            candidate_evidence_id="response:turn-1:claim:0",
+            accepted=True,
+            validator_source="LLM_GENERATED",  # type: ignore[arg-type]
+            validator_id="model",
+            reason="model tried to confirm itself",
+        )
+
+
 def test_cognitive_packet_takes_precedence_over_legacy_text_without_offia_interpretation():
     memoria = PacketMemoria()
     language = FakeLanguage("24 V")
@@ -208,6 +268,7 @@ def test_baseline_bypasses_memoria_and_forwards_full_context():
     assert memoria.learn_user_calls == []
     assert memoria.learn_calls == []
     assert memoria.validate_calls == []
+    assert memoria.learning_decision_calls == []
     assert memoria.flush_calls == 0
     assert language.last_context == history
     assert result.context == history
