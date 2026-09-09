@@ -6,7 +6,6 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
-import java.util.UUID
 
 class NativeMemoryGateway(context: Context) : MemoryGateway, AutoCloseable {
     companion object {
@@ -166,13 +165,29 @@ class NativeMemoryGateway(context: Context) : MemoryGateway, AutoCloseable {
                 return@withContext MemoryLearnResult(memoryIds = userMemoryIds)
             }
 
-            val responseId = UUID.randomUUID().toString()
+            // The trusted user turn already has a durable deterministic id
+            // (`mobile:<sequence>`). Reuse it as the response id so the candidate
+            // identity can always be reconstructed after process death:
+            //   mobile:42 -> response:mobile:42
+            check(userMemoryIds.isNotEmpty()) { "Memoria.ia não retornou memory_id factual do usuário" }
+            val responseId = userMemoryIds.first()
             val validation = validateModelResponse(
                 query = userText,
                 responseId = responseId,
                 modelId = LOCAL_MODEL_ID,
                 responseText = assistantText,
             )
+            val candidate = validation.candidateMemoryId
+            if (!candidate.isNullOrBlank()) {
+                EpistemicAuditBridge.record(
+                    responseId,
+                    EpistemicResponseAudit(
+                        responseId = validation.responseId,
+                        candidateMemoryId = candidate,
+                        validationStatus = validation.consistencyStatus,
+                    ),
+                )
+            }
             MemoryLearnResult(
                 memoryIds = userMemoryIds,
                 responseId = validation.responseId,
