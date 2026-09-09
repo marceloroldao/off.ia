@@ -4,14 +4,10 @@ from pathlib import Path
 def test_android_jni_never_writes_assistant_output_to_factual_learn_turn_path():
     source = Path("android/app/src/main/cpp/offia_memory_jni.cpp").read_text("utf-8")
 
-    # The public JNI signature remains compatible with Kotlin, but assistant
-    # output must not be serialized into memoria_mobile_learn_turn_json().
     assert "jstring /*assistant*/" in source
     assert "assistant_request" not in source
     assert "assistant_response" not in source
     assert "assistant_id" not in source
-
-    # The factual path constructs and submits only the trusted user observation.
     assert "const std::string user_text = from_jstring(env, user);" in source
     assert "const std::string user_request =" in source
     assert "json_escape(user_text)" in source
@@ -26,8 +22,6 @@ def test_android_jni_routes_cognitive_operations_to_separate_memoria_symbols():
     assert "memoria_mobile_validate_response_json" in source
     assert "memoria_mobile_decide_learning_json" in source
 
-    # Cognitive validation and Learning Gate calls are independent from the
-    # factual user learn helper. No model response is fed through call_learn().
     validate_body = source.split("Java_ia_off_NativeMemoryGateway_nativeValidateResponse", 1)[1].split(
         "Java_ia_off_NativeMemoryGateway_nativeDecideLearning", 1
     )[0]
@@ -123,3 +117,41 @@ def test_android_candidate_identity_is_restart_reconstructable_from_factual_turn
     assert "get() = responseId ?: learnedMemoryIds.firstOrNull()" in models
     assert "val effectiveCandidateMemoryId: String?" in models
     assert 'get() = candidateMemoryId ?: effectiveResponseId?.let { "response:$it" }' in models
+
+
+def test_android_explicit_learning_actions_never_run_from_normal_generation():
+    main = Path("android/app/src/main/java/ia/off/MainActivity.kt").read_text("utf-8")
+    generation = main.split("val learned = memory.learnTurn", 1)[1].split("saveWorkspace()", 1)[0]
+    decision = main.split("fun applyLearningDecision", 1)[1].split("fun runCuriosity", 1)[0]
+
+    assert "decideLearning(" not in generation
+    assert "memory.decideLearning(" in decision
+    assert 'validatorSource = "USER_CONFIRMED"' in decision
+    assert 'validatorId = "offia-ui-user"' in decision
+    assert "memory.flush()" in decision
+    assert "learningDecisionId = result.decisionId" in decision
+    assert "learningAccepted = result.accepted" in decision
+
+
+def test_android_learning_ui_requires_explicit_confirmation_or_rejection():
+    card = Path("android/app/src/main/java/ia/off/MessageCard.kt").read_text("utf-8")
+
+    assert "onLearningDecision: ((String, Boolean) -> Unit)? = null" in card
+    assert 'Text("Confirmar como memória")' in card
+    assert 'Text("Rejeitar aprendizado")' in card
+    assert 'title = { Text(if (accepted) "Confirmar como memória?" else "Rejeitar aprendizado?") }' in card
+    assert "onLearningDecision?.invoke(message.id, accepted)" in card
+    assert "message.memory?.learningDecisionId == null" in card
+
+
+def test_android_regeneration_clears_stale_epistemic_candidate_and_decision():
+    main = Path("android/app/src/main/java/ia/off/MainActivity.kt").read_text("utf-8")
+    regen = main.split("fun regenerateResponse", 1)[1].split("fun applyLearningDecision", 1)[0]
+
+    assert "learnedMemoryIds = emptyList()" in regen
+    assert "responseId = null" in regen
+    assert "candidateMemoryId = null" in regen
+    assert "validationStatus = null" in regen
+    assert "learningDecisionId = null" in regen
+    assert "learningAccepted = null" in regen
+    assert "promotedMemoryId = null" in regen
