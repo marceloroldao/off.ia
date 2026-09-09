@@ -30,8 +30,8 @@ android {
         versionCode = 8
         versionName = "0.1.0-alpha.8"
         buildConfigField("String", "OFFIA_COMMIT", "\"$offiaBuildCommit\"")
-        buildConfigField("String", "MEMORIA_IA_VERSION", "\"v1.0.0-rc7+cognitive-v1+restart2\"")
-        buildConfigField("String", "MEMORIA_IA_COMMIT", "\"ef0161b8bf66f499d63bb28b816455c72e2ffdfd\"")
+        buildConfigField("String", "MEMORIA_IA_VERSION", "\"v1.0.0-rc7+cognitive-v1+restart3\"")
+        buildConfigField("String", "MEMORIA_IA_COMMIT", "\"5fa39ea39ce9d09518e8b726f6297bf8db02ef1c\"")
         buildConfigField("String", "BDR_VERSION", "\"desconhecida\"")
         buildConfigField("String", "BDR_COMMIT", "\"1f6b7ccbe16bdfed2f1b5dcebceb17887bf6916e\"")
         buildConfigField("String", "LLAMA_CPP_COMMIT", "\"ca3d5a3e10d53f7ea672cb9b6178faca3e2807bc\"")
