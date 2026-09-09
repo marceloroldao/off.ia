@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from time import perf_counter
 from typing import Literal, Protocol, Sequence
 
-from .adapters.memoria import MemoriaBoundary, ResolvedContext
+from .adapters.memoria import LearningDecisionRequest, MemoriaBoundary, ResolvedContext
 
 ChatMode = Literal["baseline", "memoria"]
 
@@ -57,6 +57,10 @@ class OfflineRuntime:
     Memoria.ia's ResponseValidator path. Free-form response text without claims
     creates no model evidence automatically.
 
+    Learning is a separate explicit operation. OFF.IA can forward a trusted
+    USER_CONFIRMED or SENSOR_OBSERVED decision to Memoria.ia's Learning Gate, but
+    it never upgrades a model claim by itself.
+
     New Memoria adapters should implement ``learn_user``. During migration, the
     legacy ``learn`` method may be used only as a compatibility fallback and is
     called with the user message alone.
@@ -93,6 +97,15 @@ class OfflineRuntime:
             claims=claims,
         )
         return tuple(str(item) for item in evidence_ids)
+
+    def apply_learning_decision(self, request: LearningDecisionRequest) -> str | None:
+        """Forward one explicit trusted decision to Memoria.ia's Learning Gate."""
+        apply_decision = getattr(self.memoria, "apply_learning_decision", None)
+        if not callable(apply_decision):
+            raise TypeError("Memoria adapter must implement apply_learning_decision()")
+        promoted_evidence_id = apply_decision(request)
+        self.memoria.flush()
+        return None if promoted_evidence_id is None else str(promoted_evidence_id)
 
     def chat(
         self,
