@@ -45,10 +45,14 @@ class TurnResult:
 class OfflineRuntime:
     """Thin OFF.IA orchestration boundary.
 
-    Memoria mode accepts context only from Memoria.ia. After local inference,
-    the complete conversational turn (user question + assistant answer) is
-    delegated back to Memoria.ia as one learnable unit. OFF.IA does not own a
-    parallel memory database.
+    Memoria mode accepts context only from Memoria.ia. The trusted write path
+    records the user's input only. Assistant/model output is deliberately not
+    written back as factual memory here; it must pass the Memoria.ia Response
+    Validator + explicit Learning Gate path before any factual promotion.
+
+    New Memoria adapters should implement ``learn_user``. During migration, the
+    legacy ``learn`` method may be used only as a compatibility fallback and is
+    called with the user message alone.
 
     Baseline mode intentionally bypasses both Memoria retrieval and learning so
     benchmark runs are not contaminated by state changes.
@@ -58,9 +62,14 @@ class OfflineRuntime:
         self.memoria = memoria
         self.language = language
 
-    @staticmethod
-    def _memory_turn(*, question: str, answer: str) -> str:
-        return f"USER:\n{question}\n\nASSISTANT:\n{answer}"
+    def _learn_user(self, message: str):
+        learn_user = getattr(self.memoria, "learn_user", None)
+        if callable(learn_user):
+            return learn_user(message)
+        legacy_learn = getattr(self.memoria, "learn", None)
+        if callable(legacy_learn):
+            return legacy_learn(message)
+        raise TypeError("Memoria adapter must implement learn_user() or legacy learn()")
 
     def chat(
         self,
@@ -97,9 +106,7 @@ class OfflineRuntime:
 
         if mode == "memoria":
             write_start = perf_counter()
-            learned = self.memoria.learn(
-                self._memory_turn(question=message, answer=response.text)
-            )
+            learned = self._learn_user(message)
             self.memoria.flush()
             memory_write_ms = (perf_counter() - write_start) * 1000.0
             learned_memory_ids = tuple(str(item) for item in learned)
