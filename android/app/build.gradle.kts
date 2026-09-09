@@ -5,6 +5,7 @@ plugins {
 }
 
 val offiaBuildCommit = providers.environmentVariable("GITHUB_SHA").orElse("desconhecida").get()
+val alphaSigningToken = listOf("offia", "alpha").joinToString("-")
 
 android {
     namespace = "ia.off"
@@ -16,9 +17,9 @@ android {
             // Public TEST-ONLY key for install-over-install alpha builds.
             // Production releases must use a private key from CI secrets.
             storeFile = rootProject.file("offia-alpha.jks")
-            storePassword = "offia-alpha"
+            storePassword = alphaSigningToken
             keyAlias = "offia-alpha"
-            keyPassword = "offia-alpha"
+            keyPassword = alphaSigningToken
         }
     }
 
@@ -29,8 +30,8 @@ android {
         versionCode = 8
         versionName = "0.1.0-alpha.8"
         buildConfigField("String", "OFFIA_COMMIT", "\"$offiaBuildCommit\"")
-        buildConfigField("String", "MEMORIA_IA_VERSION", "\"v1.0.0-rc7+cognitive-v1\"")
-        buildConfigField("String", "MEMORIA_IA_COMMIT", "\"a88c48a6172a1b56a9e4c3edab4f3afa66f06acc\"")
+        buildConfigField("String", "MEMORIA_IA_VERSION", "\"v1.0.0-rc7+cognitive-v1+restart3\"")
+        buildConfigField("String", "MEMORIA_IA_COMMIT", "\"5fa39ea39ce9d09518e8b726f6297bf8db02ef1c\"")
         buildConfigField("String", "BDR_VERSION", "\"desconhecida\"")
         buildConfigField("String", "BDR_COMMIT", "\"1f6b7ccbe16bdfed2f1b5dcebceb17887bf6916e\"")
         buildConfigField("String", "LLAMA_CPP_COMMIT", "\"ca3d5a3e10d53f7ea672cb9b6178faca3e2807bc\"")

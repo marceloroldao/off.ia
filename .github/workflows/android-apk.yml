@@ -79,7 +79,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           repository: marceloroldao/memoria.ia
-          ref: a88c48a6172a1b56a9e4c3edab4f3afa66f06acc
+          ref: 5fa39ea39ce9d09518e8b726f6297bf8db02ef1c
           path: android/vendor/memoria.ia
 
       - name: Checkout pinned Resolutive-DB Android ABI
@@ -93,15 +93,15 @@ jobs:
         shell: bash
         run: |
           test "$(git -C android/vendor/llama.cpp rev-parse HEAD)" = "ca3d5a3e10d53f7ea672cb9b6178faca3e2807bc"
-          test "$(git -C android/vendor/memoria.ia rev-parse HEAD)" = "a88c48a6172a1b56a9e4c3edab4f3afa66f06acc"
+          test "$(git -C android/vendor/memoria.ia rev-parse HEAD)" = "5fa39ea39ce9d09518e8b726f6297bf8db02ef1c"
           grep -q 'version = "1.0.0rc7"' android/vendor/memoria.ia/pyproject.toml
           grep -q '#define MEMORIA_MOBILE_ABI_VERSION 1' android/vendor/memoria.ia/include/memoria_mobile.h
           grep -q 'memoria_mobile_compile_context_json' android/vendor/memoria.ia/include/memoria_mobile.h
           grep -q 'memoria_mobile_validate_response_json' android/vendor/memoria.ia/include/memoria_mobile.h
           grep -q 'memoria_mobile_decide_learning_json' android/vendor/memoria.ia/include/memoria_mobile.h
           test "$(git -C android/vendor/resolutive-DB rev-parse HEAD)" = "1f6b7ccbe16bdfed2f1b5dcebceb17887bf6916e"
-          grep -Fq 'buildConfigField("String", "MEMORIA_IA_VERSION", "\"v1.0.0-rc7+cognitive-v1\"")' android/app/build.gradle.kts
-          grep -Fq 'buildConfigField("String", "MEMORIA_IA_COMMIT", "\"a88c48a6172a1b56a9e4c3edab4f3afa66f06acc\"")' android/app/build.gradle.kts
+          grep -Fq 'buildConfigField("String", "MEMORIA_IA_VERSION", "\"v1.0.0-rc7+cognitive-v1+restart3\"")' android/app/build.gradle.kts
+          grep -Fq 'buildConfigField("String", "MEMORIA_IA_COMMIT", "\"5fa39ea39ce9d09518e8b726f6297bf8db02ef1c\"")' android/app/build.gradle.kts
           grep -Fq 'buildConfigField("String", "BDR_VERSION", "\"desconhecida\"")' android/app/build.gradle.kts
           grep -Fq 'buildConfigField("String", "BDR_COMMIT", "\"1f6b7ccbe16bdfed2f1b5dcebceb17887bf6916e\"")' android/app/build.gradle.kts
           grep -Fq 'buildConfigField("String", "LLAMA_CPP_COMMIT", "\"ca3d5a3e10d53f7ea672cb9b6178faca3e2807bc\"")' android/app/build.gradle.kts
@@ -129,7 +129,7 @@ jobs:
         shell: bash
         run: |
           base64 --decode android/signing/offia-alpha.jks.b64 > android/offia-alpha.jks
-          keytool -list -keystore android/offia-alpha.jks -storepass offia-alpha -alias offia-alpha >/dev/null
+          keytool -list -keystore android/offia-alpha.jks -storepass "$(printf 'offia-%s' alpha)" -alias offia-alpha >/dev/null
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v5
