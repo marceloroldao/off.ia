@@ -59,7 +59,9 @@ def test_android_gateway_quarantines_model_output_after_user_only_learn():
 
     assert "nativeLearn(requireHandle(), userText, assistantText)" in learn_body
     assert "validateModelResponse(" in learn_body
-    assert "UUID.randomUUID().toString()" in learn_body
+    assert "val responseId = userMemoryIds.first()" in learn_body
+    assert "UUID.randomUUID().toString()" not in learn_body
+    assert "EpistemicAuditBridge.record(" in learn_body
     assert "candidateMemoryId = validation.candidateMemoryId" in learn_body
     assert "validationStatus = validation.consistencyStatus" in learn_body
     assert "decideLearning(" not in learn_body
@@ -107,3 +109,12 @@ def test_android_chat_store_persists_epistemic_candidate_and_learning_metadata()
     ):
         assert f'put("{json_key}"' in store
         assert f'optString("{json_key}")' in store or f'has("{json_key}")' in store
+
+
+def test_android_candidate_identity_is_restart_reconstructable_from_factual_turn():
+    gateway = Path("android/app/src/main/java/ia/off/NativeMemoryGateway.kt").read_text("utf-8")
+    bridge = Path("android/app/src/main/java/ia/off/EpistemicAuditBridge.kt").read_text("utf-8")
+
+    assert "val responseId = userMemoryIds.first()" in gateway
+    assert "mobile:42 -> response:mobile:42" in gateway
+    assert "candidate identity can be reconstructed" in bridge
