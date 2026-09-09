@@ -45,10 +45,15 @@ class TurnResult:
 class OfflineRuntime:
     """Thin OFF.IA orchestration boundary.
 
-    Memoria mode accepts context only from Memoria.ia. The trusted write path
-    records the user's input only. Assistant/model output is deliberately not
-    written back as factual memory here; it must pass the Memoria.ia Response
-    Validator + explicit Learning Gate path before any factual promotion.
+    Memoria mode accepts context only from Memoria.ia. When Memoria.ia supplies
+    a serialized CognitivePacket, OFF.IA forwards that opaque packet to the
+    language adapter instead of the legacy text items. OFF.IA does not parse or
+    reinterpret the packet.
+
+    The trusted write path records the user's input only. Assistant/model output
+    is deliberately not written back as factual memory here; it must pass the
+    Memoria.ia Response Validator + explicit Learning Gate path before factual
+    promotion.
 
     New Memoria adapters should implement ``learn_user``. During migration, the
     legacy ``learn`` method may be used only as a compatibility fallback and is
@@ -90,7 +95,7 @@ class OfflineRuntime:
             memory_start = perf_counter()
             resolved: ResolvedContext = self.memoria.resolve(message)
             memory_ms = (perf_counter() - memory_start) * 1000.0
-            context = resolved.items
+            context = resolved.language_context()
             memory_ids = resolved.memory_ids
             hit = resolved.hit
             retrieved_chars = sum(len(x) for x in resolved.items)
