@@ -24,6 +24,9 @@ data class MemoryResolution(
 
 data class MemoryLearnResult(
     val memoryIds: List<String> = emptyList(),
+    val responseId: String? = null,
+    val candidateMemoryId: String? = null,
+    val validationStatus: String? = null,
 )
 
 data class CognitivePacketResult(
@@ -148,6 +151,7 @@ private const val MAX_CONTEXT_ITEMS = 3
 private const val MAX_CONTEXT_ITEM_CHARS = 600
 private const val MAX_REGEN_CONTEXT_CHARS = MAX_CONTEXT_ITEMS * MAX_CONTEXT_ITEM_CHARS
 private const val MAX_COGNITIVE_PACKET_CHARS = 6000
+private const val COGNITIVE_PACKET_SCHEMA = "\"packet_schema\":\"memoria.cognitive.packet.v1\""
 
 fun materializeCognitivePrompt(userText: String, packetJson: String?): String {
     val packet = packetJson?.trim()?.take(MAX_COGNITIVE_PACKET_CHARS).orEmpty()
@@ -167,6 +171,12 @@ fun materializeCognitivePrompt(userText: String, packetJson: String?): String {
 
 fun materializePrompt(userText: String, resolution: MemoryResolution): String {
     if (resolution.contextItems.isEmpty()) return userText
+
+    val cognitivePacket = resolution.contextItems
+        .singleOrNull()
+        ?.trim()
+        ?.takeIf { it.contains(COGNITIVE_PACKET_SCHEMA) }
+    if (cognitivePacket != null) return materializeCognitivePrompt(userText, cognitivePacket)
 
     val selected = resolution.contextItems
         .map { it.trim() }
