@@ -20,6 +20,16 @@ data class ResponseMemoryMetadata(
     val selectedContext: String = "",
     val trajectoryUsed: Boolean = false,
     val conversationWindowCount: Int = 0,
+    // Epistemic audit metadata returned by Memoria.ia's ResponseValidator.
+    // These identifiers do not make model output factual. They only preserve
+    // the candidate boundary needed for a later explicit Learning Gate decision.
+    val responseId: String? = null,
+    val candidateMemoryId: String? = null,
+    val validationStatus: String? = null,
+    // Explicit Learning Gate outcome. Null means no decision was made.
+    val learningDecisionId: String? = null,
+    val learningAccepted: Boolean? = null,
+    val promotedMemoryId: String? = null,
 )
 
 data class ImprovementRecord(
