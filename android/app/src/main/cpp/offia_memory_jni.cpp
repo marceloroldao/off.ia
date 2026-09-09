@@ -126,15 +126,17 @@ Java_ia_off_NativeMemoryGateway_nativeResolve(JNIEnv* env, jobject, jlong handle
 }
 
 extern "C" JNIEXPORT jstring JNICALL
-Java_ia_off_NativeMemoryGateway_nativeLearn(JNIEnv* env, jobject, jlong handle, jstring user, jstring assistant) {
+Java_ia_off_NativeMemoryGateway_nativeLearn(JNIEnv* env, jobject, jlong handle, jstring user, jstring /*assistant*/) {
     auto* runtime = from_handle(handle);
     if (!runtime) {
         throw_illegal_state(env, "Memoria.ia runtime is closed");
         return nullptr;
     }
     try {
+        // Freeze-candidate epistemic rule: only trusted user input may enter the
+        // factual learn-turn path. The assistant argument is retained in the JNI
+        // signature for Kotlin/ABI compatibility but is deliberately ignored.
         const std::string user_text = from_jstring(env, user);
-        const std::string assistant_text = from_jstring(env, assistant);
 
         std::string user_response;
         const std::string user_request =
@@ -149,23 +151,8 @@ Java_ia_off_NativeMemoryGateway_nativeLearn(JNIEnv* env, jobject, jlong handle, 
             return nullptr;
         }
 
-        std::string assistant_response;
-        const std::string assistant_request =
-            "{\"role\":\"assistant\",\"text\":\"" + json_escape(assistant_text) +
-            "\",\"ultimate_source_memory_id\":\"" + json_escape(user_id) + "\"}";
-        if (call_learn(runtime, assistant_request, &assistant_response) != MEMORIA_MOBILE_OK) {
-            throw_illegal_state(env, "Falha ao persistir turno do assistente na Memoria.ia");
-            return nullptr;
-        }
-        const std::string assistant_id = first_stored_memory_id(assistant_response);
-        if (assistant_id.empty()) {
-            throw_illegal_state(env, "Memoria.ia nao retornou memory_id do assistente");
-            return nullptr;
-        }
-
         const std::string packed =
-            "{\"memory_ids\":[\"" + json_escape(user_id) + "\",\"" +
-            json_escape(assistant_id) + "\"]}";
+            "{\"memory_ids\":[\"" + json_escape(user_id) + "\"]}";
         return env->NewStringUTF(packed.c_str());
     } catch (const std::exception& e) {
         throw_illegal_state(env, e.what());
