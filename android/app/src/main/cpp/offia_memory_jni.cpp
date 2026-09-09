@@ -75,6 +75,40 @@ memoria_mobile_status call_learn(memoria_mobile_handle* handle, const std::strin
     *response = take_response(out);
     return status;
 }
+
+using cognitive_call = memoria_mobile_status (*)(memoria_mobile_handle*, memoria_mobile_buffer, memoria_mobile_buffer*);
+
+jstring call_json_api(
+    JNIEnv* env,
+    jlong handle,
+    jstring request_json,
+    cognitive_call fn,
+    const char* failure_message,
+    bool allow_unresolved = false
+) {
+    auto* runtime = from_handle(handle);
+    if (!runtime) {
+        throw_illegal_state(env, "Memoria.ia runtime is closed");
+        return nullptr;
+    }
+    try {
+        const std::string request = from_jstring(env, request_json);
+        memoria_mobile_buffer in{
+            reinterpret_cast<const uint8_t*>(request.data()), request.size()
+        };
+        memoria_mobile_buffer out{nullptr, 0};
+        const auto status = fn(runtime, in, &out);
+        const std::string response = take_response(out);
+        if (status != MEMORIA_MOBILE_OK && !(allow_unresolved && status == MEMORIA_MOBILE_UNRESOLVED)) {
+            throw_illegal_state(env, failure_message);
+            return nullptr;
+        }
+        return env->NewStringUTF(response.c_str());
+    } catch (const std::exception& e) {
+        throw_illegal_state(env, e.what());
+        return nullptr;
+    }
+}
 }
 
 extern "C" JNIEXPORT jlong JNICALL
@@ -101,28 +135,34 @@ Java_ia_off_NativeMemoryGateway_nativeClose(JNIEnv*, jobject, jlong handle) {
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_ia_off_NativeMemoryGateway_nativeResolve(JNIEnv* env, jobject, jlong handle, jstring request_json) {
-    auto* runtime = from_handle(handle);
-    if (!runtime) {
-        throw_illegal_state(env, "Memoria.ia runtime is closed");
-        return nullptr;
-    }
-    try {
-        const std::string request = from_jstring(env, request_json);
-        memoria_mobile_buffer in{
-            reinterpret_cast<const uint8_t*>(request.data()), request.size()
-        };
-        memoria_mobile_buffer out{nullptr, 0};
-        const auto status = memoria_mobile_resolve_context_json(runtime, in, &out);
-        const std::string response = take_response(out);
-        if (status != MEMORIA_MOBILE_OK && status != MEMORIA_MOBILE_UNRESOLVED) {
-            throw_illegal_state(env, "Falha ao consultar Memoria.ia");
-            return nullptr;
-        }
-        return env->NewStringUTF(response.c_str());
-    } catch (const std::exception& e) {
-        throw_illegal_state(env, e.what());
-        return nullptr;
-    }
+    return call_json_api(
+        env, handle, request_json, memoria_mobile_resolve_context_json,
+        "Falha ao consultar Memoria.ia", true
+    );
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_ia_off_NativeMemoryGateway_nativeCompileContext(JNIEnv* env, jobject, jlong handle, jstring request_json) {
+    return call_json_api(
+        env, handle, request_json, memoria_mobile_compile_context_json,
+        "Falha ao compilar pacote cognitivo da Memoria.ia", true
+    );
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_ia_off_NativeMemoryGateway_nativeValidateResponse(JNIEnv* env, jobject, jlong handle, jstring request_json) {
+    return call_json_api(
+        env, handle, request_json, memoria_mobile_validate_response_json,
+        "Falha ao validar resposta na Memoria.ia"
+    );
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_ia_off_NativeMemoryGateway_nativeDecideLearning(JNIEnv* env, jobject, jlong handle, jstring request_json) {
+    return call_json_api(
+        env, handle, request_json, memoria_mobile_decide_learning_json,
+        "Falha no Learning Gate da Memoria.ia"
+    );
 }
 
 extern "C" JNIEXPORT jstring JNICALL
@@ -133,11 +173,7 @@ Java_ia_off_NativeMemoryGateway_nativeLearn(JNIEnv* env, jobject, jlong handle, 
         return nullptr;
     }
     try {
-        // Freeze-candidate epistemic rule: only trusted user input may enter the
-        // factual learn-turn path. The assistant argument is retained in the JNI
-        // signature for Kotlin/ABI compatibility but is deliberately ignored.
         const std::string user_text = from_jstring(env, user);
-
         std::string user_response;
         const std::string user_request =
             "{\"role\":\"user\",\"text\":\"" + json_escape(user_text) + "\"}";
@@ -150,7 +186,6 @@ Java_ia_off_NativeMemoryGateway_nativeLearn(JNIEnv* env, jobject, jlong handle, 
             throw_illegal_state(env, "Memoria.ia nao retornou memory_id do usuario");
             return nullptr;
         }
-
         const std::string packed =
             "{\"memory_ids\":[\"" + json_escape(user_id) + "\"]}";
         return env->NewStringUTF(packed.c_str());
@@ -169,12 +204,9 @@ Java_ia_off_NativeMemoryGateway_nativeLearnExternal(JNIEnv* env, jobject, jlong 
     }
     try {
         (void) request_json;
-        // Memoria.ia v1.0.0-rc4 exposes ABI v1 but does not yet export the
-        // additive external-public learning symbol. Keep the JNI entry point
-        // stable and fail explicitly until that ABI is released.
         throw_illegal_state(
             env,
-            "Memoria.ia RC4 nao oferece aprendizado external_public na ABI movel"
+            "Memoria.ia ABI movel ainda nao oferece aprendizado external_public neste adaptador"
         );
         return nullptr;
     } catch (const std::exception& e) {
@@ -185,28 +217,10 @@ Java_ia_off_NativeMemoryGateway_nativeLearnExternal(JNIEnv* env, jobject, jlong 
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_ia_off_NativeMemoryGateway_nativeExport(JNIEnv* env, jobject, jlong handle, jstring request_json) {
-    auto* runtime = from_handle(handle);
-    if (!runtime) {
-        throw_illegal_state(env, "Memoria.ia runtime is closed");
-        return nullptr;
-    }
-    try {
-        const std::string request = from_jstring(env, request_json);
-        memoria_mobile_buffer in{
-            reinterpret_cast<const uint8_t*>(request.data()), request.size()
-        };
-        memoria_mobile_buffer out{nullptr, 0};
-        const auto status = memoria_mobile_export_snapshot_json(runtime, in, &out);
-        const std::string response = take_response(out);
-        if (status != MEMORIA_MOBILE_OK) {
-            throw_illegal_state(env, "Falha ao exportar snapshot da Memoria.ia");
-            return nullptr;
-        }
-        return env->NewStringUTF(response.c_str());
-    } catch (const std::exception& e) {
-        throw_illegal_state(env, e.what());
-        return nullptr;
-    }
+    return call_json_api(
+        env, handle, request_json, memoria_mobile_export_snapshot_json,
+        "Falha ao exportar snapshot da Memoria.ia"
+    );
 }
 
 extern "C" JNIEXPORT void JNICALL
