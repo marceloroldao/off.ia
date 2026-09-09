@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Protocol, Sequence
+from typing import Literal, Protocol, Sequence
+
+TrustedValidatorSource = Literal["USER_CONFIRMED", "SENSOR_OBSERVED"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,6 +51,31 @@ class ModelClaim:
 
 
 @dataclass(frozen=True, slots=True)
+class LearningDecisionRequest:
+    """Explicit request to Memoria.ia's Learning Gate.
+
+    The original model/public candidate is never reclassified. An accepted
+    decision asks Memoria.ia to create a separate trusted evidence row. OFF.IA
+    only allows the two validator classes already authorized by the frozen
+    Memoria.ia contract.
+    """
+
+    decision_id: str
+    candidate_evidence_id: str
+    accepted: bool
+    validator_source: TrustedValidatorSource
+    validator_id: str
+    reason: str
+
+    def __post_init__(self) -> None:
+        for field_name in ("decision_id", "candidate_evidence_id", "validator_id", "reason"):
+            if not getattr(self, field_name).strip():
+                raise ValueError(f"{field_name} must be non-empty")
+        if self.validator_source not in {"USER_CONFIRMED", "SENSOR_OBSERVED"}:
+            raise ValueError("validator_source must be USER_CONFIRMED or SENSOR_OBSERVED")
+
+
+@dataclass(frozen=True, slots=True)
 class ResolvedContext:
     items: tuple[str, ...]
     memory_ids: tuple[str, ...] = ()
@@ -78,7 +105,8 @@ class MemoriaBoundary(Protocol):
     - user/sensor input may enter the trusted memory path;
     - assistant/model output must not be written back as factual memory here;
     - structured model claims may only enter the ResponseValidator path and remain
-      non-authoritative LLM_GENERATED evidence until an explicit trusted decision.
+      non-authoritative LLM_GENERATED evidence until an explicit trusted decision;
+    - only USER_CONFIRMED or SENSOR_OBSERVED may request Learning Gate promotion.
 
     New adapters should implement ``learn_user`` explicitly. ``learn`` remains a
     legacy compatibility surface only.
@@ -94,4 +122,5 @@ class MemoriaBoundary(Protocol):
         response_text: str,
         claims: Sequence[ModelClaim],
     ) -> Sequence[str]: ...
+    def apply_learning_decision(self, request: LearningDecisionRequest) -> str | None: ...
     def flush(self) -> None: ...
