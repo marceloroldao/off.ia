@@ -1,6 +1,8 @@
 from dataclasses import dataclass, field
 
-from offia.adapters.memoria import ResolvedContext
+import pytest
+
+from offia.adapters.memoria import CognitivePacketEnvelope, ResolvedContext
 from offia.runtime import OfflineRuntime
 
 
@@ -25,6 +27,19 @@ class FakeMemoria:
 
     def flush(self):
         self.flush_calls += 1
+
+
+class PacketMemoria(FakeMemoria):
+    def resolve(self, message):
+        self.resolve_calls += 1
+        return ResolvedContext(
+            ("legacy text that must not cross the model boundary",),
+            ("mem-1",),
+            hit=True,
+            cognitive_packet=CognitivePacketEnvelope(
+                '{"schema_version":1,"question":"What voltage is the main supply?","facts":[{"subject":"main supply","attribute":"voltage","value":"24 V"}]}'
+            ),
+        )
 
 
 class LegacyMemoria:
@@ -92,6 +107,28 @@ def test_memory_context_flows_to_language_and_only_user_input_enters_trusted_wri
     assert memoria.learn_calls == []
     assert "24 V" not in memoria.learn_user_calls
     assert memoria.flush_calls == 1
+
+
+def test_cognitive_packet_takes_precedence_over_legacy_text_without_offia_interpretation():
+    memoria = PacketMemoria()
+    language = FakeLanguage("24 V")
+    result = OfflineRuntime(memoria, language).chat("What voltage is the main supply?")
+
+    assert len(language.last_context) == 1
+    assert language.last_context[0].startswith('{"schema_version":1')
+    assert "legacy text that must not cross the model boundary" not in language.last_context[0]
+    assert result.context == language.last_context
+    assert result.metrics.retrieved_context_chars == len("legacy text that must not cross the model boundary")
+    assert result.metrics.context_sent_chars == len(language.last_context[0])
+    assert memoria.learn_user_calls == ["What voltage is the main supply?"]
+    assert all("24 V" not in item for item in memoria.learn_user_calls)
+
+
+def test_cognitive_packet_envelope_fails_closed_on_invalid_transport_metadata():
+    with pytest.raises(ValueError, match="payload_json must be non-empty"):
+        CognitivePacketEnvelope("   ")
+    with pytest.raises(ValueError, match="schema_version must be >= 1"):
+        CognitivePacketEnvelope("{}", schema_version=0)
 
 
 def test_legacy_memoria_fallback_receives_user_text_only_never_assistant_output():
