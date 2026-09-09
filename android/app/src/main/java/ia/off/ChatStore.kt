@@ -33,8 +33,8 @@ data class ChatInteraction(
  */
 class ChatStore(context: Context) {
     companion object {
-        private const val SCHEMA_VERSION = 4
-        private val READABLE_SCHEMA_VERSIONS = setOf(2, 3, SCHEMA_VERSION)
+        private const val SCHEMA_VERSION = 5
+        private val READABLE_SCHEMA_VERSIONS = setOf(2, 3, 4, SCHEMA_VERSION)
         private const val FILE_NAME = "chat-workspace-v2.json"
         private const val LEGACY_FILE_NAME = "chat-history-v1.json"
         private const val MAX_MESSAGES_PER_SESSION = 2000
@@ -220,6 +220,12 @@ class ChatStore(context: Context) {
                 put("selected_context", memory.selectedContext)
                 put("trajectory_used", memory.trajectoryUsed)
                 put("conversation_window_count", memory.conversationWindowCount)
+                memory.responseId?.let { put("response_id", it) }
+                memory.candidateMemoryId?.let { put("candidate_memory_id", it) }
+                memory.validationStatus?.let { put("validation_status", it) }
+                memory.learningDecisionId?.let { put("learning_decision_id", it) }
+                memory.learningAccepted?.let { put("learning_accepted", it) }
+                memory.promotedMemoryId?.let { put("promoted_memory_id", it) }
             })
         }
 
@@ -318,6 +324,14 @@ class ChatStore(context: Context) {
                 selectedContext = item.optString("selected_context"),
                 trajectoryUsed = item.optBoolean("trajectory_used", false),
                 conversationWindowCount = item.optInt("conversation_window_count", 0),
+                responseId = item.optString("response_id").takeIf { it.isNotBlank() },
+                candidateMemoryId = item.optString("candidate_memory_id").takeIf { it.isNotBlank() },
+                validationStatus = item.optString("validation_status").takeIf { it.isNotBlank() },
+                learningDecisionId = item.optString("learning_decision_id").takeIf { it.isNotBlank() },
+                learningAccepted = if (item.has("learning_accepted") && !item.isNull("learning_accepted")) {
+                    item.optBoolean("learning_accepted")
+                } else null,
+                promotedMemoryId = item.optString("promoted_memory_id").takeIf { it.isNotBlank() },
             )
         }
 
