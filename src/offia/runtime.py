@@ -23,6 +23,7 @@ class TurnMetrics:
     memory_miss: bool
     retrieved_memory_ids: tuple[str, ...]
     learned_memory_ids: tuple[str, ...]
+    validated_model_evidence_ids: tuple[str, ...]
     retrieved_context_chars: int
     context_sent_chars: int
     input_tokens: int | None
@@ -51,9 +52,10 @@ class OfflineRuntime:
     reinterpret the packet.
 
     The trusted write path records the user's input only. Assistant/model output
-    is deliberately not written back as factual memory here; it must pass the
-    Memoria.ia Response Validator + explicit Learning Gate path before factual
-    promotion.
+    is deliberately not written back as factual memory here. Structured claims,
+    when explicitly supplied by a language adapter, may only be sent to
+    Memoria.ia's ResponseValidator path. Free-form response text without claims
+    creates no model evidence automatically.
 
     New Memoria adapters should implement ``learn_user``. During migration, the
     legacy ``learn`` method may be used only as a compatibility fallback and is
@@ -76,12 +78,29 @@ class OfflineRuntime:
             return legacy_learn(message)
         raise TypeError("Memoria adapter must implement learn_user() or legacy learn()")
 
+    def _validate_model_response(self, *, response_id: str | None, response) -> tuple[str, ...]:
+        claims = tuple(getattr(response, "claims", ()) or ())
+        if not claims:
+            return ()
+        if response_id is None or not response_id.strip():
+            raise ValueError("response_id is required when structured model claims are present")
+        validator = getattr(self.memoria, "validate_model_response", None)
+        if not callable(validator):
+            raise TypeError("Memoria adapter must implement validate_model_response() for structured claims")
+        evidence_ids = validator(
+            response_id=response_id,
+            response_text=response.text,
+            claims=claims,
+        )
+        return tuple(str(item) for item in evidence_ids)
+
     def chat(
         self,
         message: str,
         *,
         mode: ChatMode = "memoria",
         baseline_context: Sequence[str] = (),
+        response_id: str | None = None,
     ) -> TurnResult:
         if mode not in {"baseline", "memoria"}:
             raise ValueError("mode must be 'baseline' or 'memoria'")
@@ -90,6 +109,7 @@ class OfflineRuntime:
         memory_ms = 0.0
         memory_write_ms = 0.0
         learned_memory_ids: tuple[str, ...] = ()
+        validated_model_evidence_ids: tuple[str, ...] = ()
 
         if mode == "memoria":
             memory_start = perf_counter()
@@ -110,6 +130,10 @@ class OfflineRuntime:
         llm_ms = (perf_counter() - llm_start) * 1000.0
 
         if mode == "memoria":
+            validated_model_evidence_ids = self._validate_model_response(
+                response_id=response_id,
+                response=response,
+            )
             write_start = perf_counter()
             learned = self._learn_user(message)
             self.memoria.flush()
@@ -128,6 +152,7 @@ class OfflineRuntime:
                 memory_miss=(mode == "memoria" and not hit),
                 retrieved_memory_ids=memory_ids,
                 learned_memory_ids=learned_memory_ids,
+                validated_model_evidence_ids=validated_model_evidence_ids,
                 retrieved_context_chars=retrieved_chars,
                 context_sent_chars=len("\n".join(context)),
                 input_tokens=getattr(usage, "input_tokens", None),
