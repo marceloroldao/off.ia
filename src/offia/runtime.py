@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from time import perf_counter
 from typing import Literal, Protocol, Sequence
 
-from .adapters.memoria import MemoriaBoundary, ResolvedContext
+from .adapters.memoria import LearningDecisionRequest, MemoriaBoundary, ResolvedContext
 
 ChatMode = Literal["baseline", "memoria"]
 
@@ -23,6 +23,7 @@ class TurnMetrics:
     memory_miss: bool
     retrieved_memory_ids: tuple[str, ...]
     learned_memory_ids: tuple[str, ...]
+    validated_model_evidence_ids: tuple[str, ...]
     retrieved_context_chars: int
     context_sent_chars: int
     input_tokens: int | None
@@ -45,10 +46,24 @@ class TurnResult:
 class OfflineRuntime:
     """Thin OFF.IA orchestration boundary.
 
-    Memoria mode accepts context only from Memoria.ia. After local inference,
-    the complete conversational turn (user question + assistant answer) is
-    delegated back to Memoria.ia as one learnable unit. OFF.IA does not own a
-    parallel memory database.
+    Memoria mode accepts context only from Memoria.ia. When Memoria.ia supplies
+    a serialized CognitivePacket, OFF.IA forwards that opaque packet to the
+    language adapter instead of the legacy text items. OFF.IA does not parse or
+    reinterpret the packet.
+
+    The trusted write path records the user's input only. Assistant/model output
+    is deliberately not written back as factual memory here. Structured claims,
+    when explicitly supplied by a language adapter, may only be sent to
+    Memoria.ia's ResponseValidator path. Free-form response text without claims
+    creates no model evidence automatically.
+
+    Learning is a separate explicit operation. OFF.IA can forward a trusted
+    USER_CONFIRMED or SENSOR_OBSERVED decision to Memoria.ia's Learning Gate, but
+    it never upgrades a model claim by itself.
+
+    New Memoria adapters should implement ``learn_user``. During migration, the
+    legacy ``learn`` method may be used only as a compatibility fallback and is
+    called with the user message alone.
 
     Baseline mode intentionally bypasses both Memoria retrieval and learning so
     benchmark runs are not contaminated by state changes.
@@ -58,9 +73,39 @@ class OfflineRuntime:
         self.memoria = memoria
         self.language = language
 
-    @staticmethod
-    def _memory_turn(*, question: str, answer: str) -> str:
-        return f"USER:\n{question}\n\nASSISTANT:\n{answer}"
+    def _learn_user(self, message: str):
+        learn_user = getattr(self.memoria, "learn_user", None)
+        if callable(learn_user):
+            return learn_user(message)
+        legacy_learn = getattr(self.memoria, "learn", None)
+        if callable(legacy_learn):
+            return legacy_learn(message)
+        raise TypeError("Memoria adapter must implement learn_user() or legacy learn()")
+
+    def _validate_model_response(self, *, response_id: str | None, response) -> tuple[str, ...]:
+        claims = tuple(getattr(response, "claims", ()) or ())
+        if not claims:
+            return ()
+        if response_id is None or not response_id.strip():
+            raise ValueError("response_id is required when structured model claims are present")
+        validator = getattr(self.memoria, "validate_model_response", None)
+        if not callable(validator):
+            raise TypeError("Memoria adapter must implement validate_model_response() for structured claims")
+        evidence_ids = validator(
+            response_id=response_id,
+            response_text=response.text,
+            claims=claims,
+        )
+        return tuple(str(item) for item in evidence_ids)
+
+    def apply_learning_decision(self, request: LearningDecisionRequest) -> str | None:
+        """Forward one explicit trusted decision to Memoria.ia's Learning Gate."""
+        apply_decision = getattr(self.memoria, "apply_learning_decision", None)
+        if not callable(apply_decision):
+            raise TypeError("Memoria adapter must implement apply_learning_decision()")
+        promoted_evidence_id = apply_decision(request)
+        self.memoria.flush()
+        return None if promoted_evidence_id is None else str(promoted_evidence_id)
 
     def chat(
         self,
@@ -68,6 +113,7 @@ class OfflineRuntime:
         *,
         mode: ChatMode = "memoria",
         baseline_context: Sequence[str] = (),
+        response_id: str | None = None,
     ) -> TurnResult:
         if mode not in {"baseline", "memoria"}:
             raise ValueError("mode must be 'baseline' or 'memoria'")
@@ -76,12 +122,13 @@ class OfflineRuntime:
         memory_ms = 0.0
         memory_write_ms = 0.0
         learned_memory_ids: tuple[str, ...] = ()
+        validated_model_evidence_ids: tuple[str, ...] = ()
 
         if mode == "memoria":
             memory_start = perf_counter()
             resolved: ResolvedContext = self.memoria.resolve(message)
             memory_ms = (perf_counter() - memory_start) * 1000.0
-            context = resolved.items
+            context = resolved.language_context()
             memory_ids = resolved.memory_ids
             hit = resolved.hit
             retrieved_chars = sum(len(x) for x in resolved.items)
@@ -96,10 +143,12 @@ class OfflineRuntime:
         llm_ms = (perf_counter() - llm_start) * 1000.0
 
         if mode == "memoria":
-            write_start = perf_counter()
-            learned = self.memoria.learn(
-                self._memory_turn(question=message, answer=response.text)
+            validated_model_evidence_ids = self._validate_model_response(
+                response_id=response_id,
+                response=response,
             )
+            write_start = perf_counter()
+            learned = self._learn_user(message)
             self.memoria.flush()
             memory_write_ms = (perf_counter() - write_start) * 1000.0
             learned_memory_ids = tuple(str(item) for item in learned)
@@ -116,6 +165,7 @@ class OfflineRuntime:
                 memory_miss=(mode == "memoria" and not hit),
                 retrieved_memory_ids=memory_ids,
                 learned_memory_ids=learned_memory_ids,
+                validated_model_evidence_ids=validated_model_evidence_ids,
                 retrieved_context_chars=retrieved_chars,
                 context_sent_chars=len("\n".join(context)),
                 input_tokens=getattr(usage, "input_tokens", None),

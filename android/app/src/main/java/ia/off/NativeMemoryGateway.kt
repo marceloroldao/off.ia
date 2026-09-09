@@ -6,11 +6,13 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.util.UUID
 
 class NativeMemoryGateway(context: Context) : MemoryGateway, AutoCloseable {
     companion object {
         private const val DURABLE_STORAGE_ROOT = "memoria-v2"
         private const val MAX_TRAJECTORY_TURNS = 8
+        private const val LOCAL_MODEL_ID = "offia-local"
 
         init {
             System.loadLibrary("offia-memory")
@@ -50,31 +52,133 @@ class NativeMemoryGateway(context: Context) : MemoryGateway, AutoCloseable {
             }
         }
 
-        val json = JSONObject(nativeResolve(requireHandle(), request.toString()))
+        // Gate 2B: the legacy Android resolve surface is retained for UI stability,
+        // but its implementation now consumes the Memoria-owned Context Compiler.
+        // OFF.IA transports the packet and does not reinterpret its relations.
+        val json = JSONObject(nativeCompileContext(requireHandle(), request.toString()))
         val status = when (json.optString("status")) {
             "HIT" -> MemoryStatus.HIT
             "MISS" -> MemoryStatus.MISS
             "UNRESOLVED" -> MemoryStatus.UNRESOLVED
             else -> MemoryStatus.UNAVAILABLE
         }
-        val memoryIds = parseIds(json.optJSONArray("memory_ids"))
-        val context = json.optString("selected_context")
-        val confidence = if (json.has("confidence")) json.optDouble("confidence") else Double.NaN
+        val packet = json.optJSONObject("packet")
+        val memoryIds = parseIds(packet?.optJSONArray("memory_ids"))
+        val confidence = packet?.let {
+            if (it.has("confidence")) it.optDouble("confidence") else Double.NaN
+        } ?: Double.NaN
+        val activation = packet?.optJSONObject("activation")
 
         MemoryResolution(
             status = status,
-            contextItems = if (status == MemoryStatus.HIT && context.isNotBlank()) listOf(context) else emptyList(),
+            contextItems = if (status == MemoryStatus.HIT && packet != null) listOf(json.toString()) else emptyList(),
             memoryIds = memoryIds,
             confidence = confidence.takeUnless { it.isNaN() },
-            trajectoryUsed = json.optBoolean("trajectory_used", false),
-            conversationWindowCount = json.optInt("conversation_window_count", 0),
+            trajectoryUsed = activation?.optBoolean("trajectory_used", false) ?: false,
+            conversationWindowCount = conversationWindow.takeLast(MAX_TRAJECTORY_TURNS).size,
+        )
+    }
+
+    override suspend fun compileContext(message: String, namespace: String): CognitivePacketResult =
+        withContext(Dispatchers.IO) {
+            require(message.isNotBlank()) { "Pergunta vazia para Context Compiler" }
+            val request = JSONObject().apply {
+                put("query", message)
+                put("namespace", namespace)
+            }
+            val raw = nativeCompileContext(requireHandle(), request.toString())
+            val json = JSONObject(raw)
+            val status = when (json.optString("status")) {
+                "HIT" -> MemoryStatus.HIT
+                "UNRESOLVED" -> MemoryStatus.UNRESOLVED
+                else -> MemoryStatus.UNAVAILABLE
+            }
+            val packet = json.optJSONObject("packet")?.toString()
+            CognitivePacketResult(status = status, packetJson = packet)
+        }
+
+    override suspend fun validateModelResponse(
+        query: String,
+        responseId: String,
+        modelId: String,
+        responseText: String,
+        namespace: String,
+    ): ModelResponseValidation = withContext(Dispatchers.IO) {
+        require(query.isNotBlank()) { "Pergunta vazia para ResponseValidator" }
+        require(responseId.isNotBlank()) { "response_id vazio" }
+        require(modelId.isNotBlank()) { "model_id vazio" }
+        require(responseText.isNotBlank()) { "Resposta vazia para ResponseValidator" }
+        val request = JSONObject().apply {
+            put("query", query)
+            put("response_id", responseId)
+            put("model_id", modelId)
+            put("response_text", responseText)
+            put("namespace", namespace)
+        }
+        val json = JSONObject(nativeValidateResponse(requireHandle(), request.toString()))
+        check(!json.optBoolean("promoted", true)) { "ResponseValidator promoveu candidato automaticamente" }
+        ModelResponseValidation(
+            responseId = json.optString("response_id", responseId),
+            candidateMemoryId = json.optString("candidate_memory_id").takeIf { it.isNotBlank() },
+            consistencyStatus = json.optString("overall_status").takeIf { it.isNotBlank() },
+        )
+    }
+
+    override suspend fun decideLearning(
+        decisionId: String,
+        candidateMemoryId: String,
+        accepted: Boolean,
+        validatorSource: String,
+        validatorId: String,
+        namespace: String,
+    ): LearningDecisionResult = withContext(Dispatchers.IO) {
+        require(decisionId.isNotBlank()) { "decision_id vazio" }
+        require(candidateMemoryId.isNotBlank()) { "candidate_memory_id vazio" }
+        require(validatorSource in setOf("USER_CONFIRMED", "SENSOR_OBSERVED")) {
+            "Somente USER_CONFIRMED ou SENSOR_OBSERVED podem validar aprendizado"
+        }
+        require(validatorId.isNotBlank()) { "validator_id vazio" }
+        val request = JSONObject().apply {
+            put("decision_id", decisionId)
+            put("candidate_memory_id", candidateMemoryId)
+            put("accepted", accepted)
+            put("validator_source", validatorSource)
+            put("validator_id", validatorId)
+            put("namespace", namespace)
+        }
+        val json = JSONObject(nativeDecideLearning(requireHandle(), request.toString()))
+        LearningDecisionResult(
+            decisionId = json.optString("decision_id", decisionId),
+            accepted = json.optBoolean("accepted", false),
+            promotedMemoryId = json.optString("learning_memory_id").takeIf {
+                accepted && json.optBoolean("promoted", false) && it.isNotBlank()
+            },
         )
     }
 
     override suspend fun learnTurn(userText: String, assistantText: String): MemoryLearnResult =
         withContext(Dispatchers.IO) {
-            val json = JSONObject(nativeLearn(requireHandle(), userText, assistantText))
-            MemoryLearnResult(memoryIds = parseIds(json.optJSONArray("memory_ids")))
+            // The factual write remains USER-only in JNI. After that trusted write,
+            // the model output crosses only the ResponseValidator quarantine path.
+            val learnedJson = JSONObject(nativeLearn(requireHandle(), userText, assistantText))
+            val userMemoryIds = parseIds(learnedJson.optJSONArray("memory_ids"))
+            if (assistantText.isBlank()) {
+                return@withContext MemoryLearnResult(memoryIds = userMemoryIds)
+            }
+
+            val responseId = UUID.randomUUID().toString()
+            val validation = validateModelResponse(
+                query = userText,
+                responseId = responseId,
+                modelId = LOCAL_MODEL_ID,
+                responseText = assistantText,
+            )
+            MemoryLearnResult(
+                memoryIds = userMemoryIds,
+                responseId = validation.responseId,
+                candidateMemoryId = validation.candidateMemoryId,
+                validationStatus = validation.consistencyStatus,
+            )
         }
 
     override suspend fun learnExternalKnowledge(source: ExternalKnowledgeSource): ExternalKnowledgeLearnResult =
@@ -168,6 +272,9 @@ class NativeMemoryGateway(context: Context) : MemoryGateway, AutoCloseable {
     private external fun nativeOpen(path: String): Long
     private external fun nativeClose(handle: Long)
     private external fun nativeResolve(handle: Long, requestJson: String): String
+    private external fun nativeCompileContext(handle: Long, requestJson: String): String
+    private external fun nativeValidateResponse(handle: Long, requestJson: String): String
+    private external fun nativeDecideLearning(handle: Long, requestJson: String): String
     private external fun nativeLearn(handle: Long, user: String, assistant: String): String
     private external fun nativeLearnExternal(handle: Long, requestJson: String): String
     private external fun nativeExport(handle: Long, requestJson: String): String
