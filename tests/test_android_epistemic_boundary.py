@@ -78,3 +78,32 @@ def test_android_kotlin_learning_gate_allows_only_trusted_validators():
     assert 'put("accepted", accepted)' in source
     assert 'put("candidate_memory_id", candidateMemoryId)' in source
     assert 'check(!json.optBoolean("promoted", true))' in source
+
+
+def test_android_chat_store_persists_epistemic_candidate_and_learning_metadata():
+    models = Path("android/app/src/main/java/ia/off/ChatModels.kt").read_text("utf-8")
+    store = Path("android/app/src/main/java/ia/off/ChatStore.kt").read_text("utf-8")
+
+    assert "private const val SCHEMA_VERSION = 5" in store
+    assert "setOf(2, 3, 4, SCHEMA_VERSION)" in store
+
+    for kotlin_field in (
+        "responseId",
+        "candidateMemoryId",
+        "validationStatus",
+        "learningDecisionId",
+        "learningAccepted",
+        "promotedMemoryId",
+    ):
+        assert f"val {kotlin_field}:" in models
+
+    for json_key in (
+        "response_id",
+        "candidate_memory_id",
+        "validation_status",
+        "learning_decision_id",
+        "learning_accepted",
+        "promoted_memory_id",
+    ):
+        assert f'put("{json_key}"' in store
+        assert f'optString("{json_key}")' in store or f'has("{json_key}")' in store
