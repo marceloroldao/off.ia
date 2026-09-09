@@ -41,6 +41,7 @@ fun MessageCard(
     onRegenerate: ((String) -> Unit)? = null,
     onCuriosity: ((String) -> Unit)? = null,
     onImprove: ((String) -> Unit)? = null,
+    onLearningDecision: ((String, Boolean) -> Unit)? = null,
 ) {
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
@@ -64,10 +65,19 @@ fun MessageCard(
     }
     val hasPublicEvidence = publicSources.isNotEmpty() || publicKnowledge != null
     val memoryCount = message.memory?.memoryIds?.size ?: 0
+    val pendingLearningCandidate = if (
+        isLocal && message.memory?.learningDecisionId == null
+    ) message.memory?.effectiveCandidateMemoryId else null
+    val learningStateLabel = when (message.memory?.learningAccepted) {
+        true -> "Memória confirmada"
+        false -> "Aprendizado rejeitado"
+        null -> null
+    }
     var improvements by remember(message.id) { mutableStateOf(message.improvements) }
     var improving by remember(message.id) { mutableStateOf(false) }
     var improveError by remember(message.id) { mutableStateOf<String?>(null) }
     var pendingConfirmation by remember(message.id) { mutableStateOf<ImproveProviderKind?>(null) }
+    var pendingLearningDecision by remember(message.id) { mutableStateOf<Boolean?>(null) }
     var memoryExpanded by remember(message.id) { mutableStateOf(false) }
     var sourcesExpanded by remember(message.id) { mutableStateOf(false) }
     var moreExpanded by remember(message.id) { mutableStateOf(false) }
@@ -233,6 +243,25 @@ fun MessageCard(
                                         onRegenerate?.invoke(message.id)
                                     },
                                 )
+                                if (pendingLearningCandidate != null) {
+                                    HorizontalDivider()
+                                    DropdownMenuItem(
+                                        enabled = onLearningDecision != null && !busy,
+                                        text = { Text("Confirmar como memória") },
+                                        onClick = {
+                                            moreExpanded = false
+                                            pendingLearningDecision = true
+                                        },
+                                    )
+                                    DropdownMenuItem(
+                                        enabled = onLearningDecision != null && !busy,
+                                        text = { Text("Rejeitar aprendizado") },
+                                        onClick = {
+                                            moreExpanded = false
+                                            pendingLearningDecision = false
+                                        },
+                                    )
+                                }
                             }
                             DropdownMenuItem(
                                 text = { Text("Compartilhar resposta") },
@@ -259,6 +288,10 @@ fun MessageCard(
                         }
                     }
                 }
+            }
+
+            learningStateLabel?.let { label ->
+                Text(label, style = MaterialTheme.typography.labelSmall)
             }
 
             improveError?.let { error ->
@@ -320,6 +353,31 @@ fun MessageCard(
             },
             dismissButton = {
                 TextButton(onClick = { pendingConfirmation = null }) { Text("Cancelar") }
+            },
+        )
+    }
+
+    pendingLearningDecision?.let { accepted ->
+        AlertDialog(
+            onDismissRequest = { pendingLearningDecision = null },
+            title = { Text(if (accepted) "Confirmar como memória?" else "Rejeitar aprendizado?") },
+            text = {
+                Text(
+                    if (accepted) {
+                        "A Memoria.ia criará uma nova evidência USER_CONFIRMED ligada a esta resposta. A resposta original da LLM continuará registrada separadamente como assistant_generated."
+                    } else {
+                        "A Memoria.ia registrará a rejeição. A resposta original continuará em quarentena e não se tornará fato."
+                    },
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    pendingLearningDecision = null
+                    onLearningDecision?.invoke(message.id, accepted)
+                }) { Text(if (accepted) "Confirmar" else "Rejeitar") }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingLearningDecision = null }) { Text("Cancelar") }
             },
         )
     }
@@ -468,6 +526,11 @@ private fun ResponseMemoryPanel(
                 memory.confidence?.let {
                     Text("Confiança ${"%.3f".format(it)}", style = MaterialTheme.typography.bodySmall)
                 }
+                when (memory.learningAccepted) {
+                    true -> Text("Aprendizado: confirmado pelo usuário", style = MaterialTheme.typography.bodySmall)
+                    false -> Text("Aprendizado: rejeitado pelo usuário", style = MaterialTheme.typography.bodySmall)
+                    null -> Unit
+                }
                 if (showDiagnostics) {
                     HorizontalDivider()
                     Text("Status: ${memory.status}", style = MaterialTheme.typography.bodySmall)
@@ -479,6 +542,10 @@ private fun ResponseMemoryPanel(
                         "IDs aprendidos: ${if (memory.learnedMemoryIds.isEmpty()) "—" else memory.learnedMemoryIds.joinToString()}",
                         style = MaterialTheme.typography.bodySmall,
                     )
+                    memory.validationStatus?.let { Text("Validação: $it", style = MaterialTheme.typography.bodySmall) }
+                    memory.effectiveCandidateMemoryId?.let { Text("Candidato: $it", style = MaterialTheme.typography.bodySmall) }
+                    memory.learningDecisionId?.let { Text("Decisão: $it", style = MaterialTheme.typography.bodySmall) }
+                    memory.promotedMemoryId?.let { Text("Memória promovida: $it", style = MaterialTheme.typography.bodySmall) }
                     if (externalPublicMemoryIdsUsed.isNotEmpty()) {
                         Text(
                             "IDs públicos usados: ${externalPublicMemoryIdsUsed.joinToString()}",

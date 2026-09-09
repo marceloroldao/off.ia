@@ -417,7 +417,15 @@ fun OffiaChatScreen() {
         val userText = messages[userIndex].text
         val previous = messages[responseIndex]
         if (previous.generation?.source == ResponseSource.CURIOSITY) return
-        val auditedMemory = previous.memory?.copy(learnedMemoryIds = emptyList())
+        val auditedMemory = previous.memory?.copy(
+            learnedMemoryIds = emptyList(),
+            responseId = null,
+            candidateMemoryId = null,
+            validationStatus = null,
+            learningDecisionId = null,
+            learningAccepted = null,
+            promotedMemoryId = null,
+        )
         auditedMemory?.let {
             lastMemoryStatus = it.status
             lastMemoryIds = it.memoryIds
@@ -461,6 +469,60 @@ fun OffiaChatScreen() {
             } finally {
                 generating = false
                 generationJob = null
+                busy = false
+            }
+        }
+    }
+
+    fun applyLearningDecision(responseId: String, accepted: Boolean) {
+        if (busy || !memory.available) return
+        val responseIndex = messages.indexOfFirst { it.id == responseId }
+        if (responseIndex < 0) return
+        val message = messages[responseIndex]
+        if (message.generation?.source != ResponseSource.LOCAL) return
+        val memoryAudit = message.memory ?: return
+        if (memoryAudit.learningDecisionId != null) return
+        val candidate = memoryAudit.effectiveCandidateMemoryId ?: return
+        val effectiveResponseId = memoryAudit.effectiveResponseId
+        val decisionId = "offia:${message.id}:${if (accepted) "accept" else "reject"}"
+
+        scope.launch {
+            busy = true
+            status = if (accepted) {
+                "Offline • confirmando evidência na Memoria.ia…"
+            } else {
+                "Offline • rejeitando candidato na Memoria.ia…"
+            }
+            try {
+                val result = memory.decideLearning(
+                    decisionId = decisionId,
+                    candidateMemoryId = candidate,
+                    accepted = accepted,
+                    validatorSource = "USER_CONFIRMED",
+                    validatorId = "offia-ui-user",
+                )
+                memory.flush()
+                val transientStatus = effectiveResponseId
+                    ?.let { EpistemicAuditBridge.peek(it)?.validationStatus }
+                messages[responseIndex] = message.copy(
+                    memory = memoryAudit.copy(
+                        responseId = effectiveResponseId,
+                        candidateMemoryId = candidate,
+                        validationStatus = memoryAudit.validationStatus ?: transientStatus,
+                        learningDecisionId = result.decisionId,
+                        learningAccepted = result.accepted,
+                        promotedMemoryId = result.promotedMemoryId,
+                    ),
+                )
+                saveWorkspace()
+                status = if (result.accepted) {
+                    "Offline • memória confirmada"
+                } else {
+                    "Offline • aprendizado rejeitado"
+                }
+            } catch (e: Exception) {
+                status = "Erro no Learning Gate • ${e.message ?: e.javaClass.simpleName}"
+            } finally {
                 busy = false
             }
         }
@@ -776,7 +838,12 @@ fun OffiaChatScreen() {
                                             val currentMemory = messages[responseIndex].memory
                                             if (currentMemory != null) {
                                                 messages[responseIndex] = messages[responseIndex].copy(
-                                                    memory = currentMemory.copy(learnedMemoryIds = learned.memoryIds.distinct()),
+                                                    memory = currentMemory.copy(
+                                                        learnedMemoryIds = learned.memoryIds.distinct(),
+                                                        responseId = learned.responseId,
+                                                        candidateMemoryId = learned.candidateMemoryId,
+                                                        validationStatus = learned.validationStatus,
+                                                    ),
                                                 )
                                             }
                                         }
@@ -818,6 +885,7 @@ fun OffiaChatScreen() {
                     busy = busy,
                     onRegenerate = if (modelReady) ({ responseId -> regenerateResponse(responseId) }) else null,
                     onCuriosity = if (modelReady && curiosityProvider.available) ({ responseId -> runCuriosity(responseId) }) else null,
+                    onLearningDecision = if (memory.available) ({ responseId, accepted -> applyLearningDecision(responseId, accepted) }) else null,
                 )
             }
         }
