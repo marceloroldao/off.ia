@@ -30,7 +30,19 @@ data class ResponseMemoryMetadata(
     val learningDecisionId: String? = null,
     val learningAccepted: Boolean? = null,
     val promotedMemoryId: String? = null,
-)
+) {
+    /**
+     * Normal local responses anchor their model candidate to the trusted user
+     * turn id (`mobile:<sequence>`). `learnedMemoryIds` was already persisted by
+     * older OFF.IA workspaces, so these effective ids remain reconstructable
+     * after restart even when the newer explicit audit fields were never saved.
+     */
+    val effectiveResponseId: String?
+        get() = responseId ?: learnedMemoryIds.firstOrNull()
+
+    val effectiveCandidateMemoryId: String?
+        get() = candidateMemoryId ?: effectiveResponseId?.let { "response:$it" }
+}
 
 data class ImprovementRecord(
     val provider: ImproveProviderKind,
