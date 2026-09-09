@@ -29,13 +29,13 @@ android {
         versionCode = 8
         versionName = "0.1.0-alpha.8"
         buildConfigField("String", "OFFIA_COMMIT", "\"$offiaBuildCommit\"")
-        buildConfigField("String", "MEMORIA_IA_VERSION", "\"v1.0.0-rc6\"")
-        buildConfigField("String", "MEMORIA_IA_COMMIT", "\"05a537b1534750ec9856cb5f5f6cdc268b5db5f9\"")
+        buildConfigField("String", "MEMORIA_IA_VERSION", "\"v1.0.0-rc7+cognitive-v1\"")
+        buildConfigField("String", "MEMORIA_IA_COMMIT", "\"a88c48a6172a1b56a9e4c3edab4f3afa66f06acc\"")
         buildConfigField("String", "BDR_VERSION", "\"desconhecida\"")
         buildConfigField("String", "BDR_COMMIT", "\"1f6b7ccbe16bdfed2f1b5dcebceb17887bf6916e\"")
         buildConfigField("String", "LLAMA_CPP_COMMIT", "\"ca3d5a3e10d53f7ea672cb9b6178faca3e2807bc\"")
         buildConfigField("String", "KV_CACHE_TYPE", "\"Q8_0\"")
-        buildConfigField("String", "MEMORIA_MOBILE_ABI", "\"v1\"")
+        buildConfigField("String", "MEMORIA_MOBILE_ABI", "\"v1+cognitive\"")
 
         ndk {
             abiFilters += listOf("arm64-v8a")
