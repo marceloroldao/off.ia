@@ -24,6 +24,31 @@ class CognitivePacketEnvelope:
 
 
 @dataclass(frozen=True, slots=True)
+class ModelClaim:
+    """Structured model claim transport.
+
+    This is not a factual memory row. OFF.IA may forward claims to Memoria.ia's
+    ResponseValidator, where they remain LLM_GENERATED unless a separate trusted
+    Learning Gate decision creates new authoritative evidence.
+    """
+
+    subject: str
+    predicate: str
+    object: str
+    confidence: float = 1.0
+
+    def __post_init__(self) -> None:
+        if not self.subject.strip():
+            raise ValueError("subject must be non-empty")
+        if not self.predicate.strip():
+            raise ValueError("predicate must be non-empty")
+        if not self.object.strip():
+            raise ValueError("object must be non-empty")
+        if not 0.0 <= self.confidence <= 1.0:
+            raise ValueError("confidence must be in [0, 1]")
+
+
+@dataclass(frozen=True, slots=True)
 class ResolvedContext:
     items: tuple[str, ...]
     memory_ids: tuple[str, ...] = ()
@@ -51,7 +76,9 @@ class MemoriaBoundary(Protocol):
     - Memoria.ia owns cognitive/temporal semantics and packet compilation.
     - OFF.IA may transport a serialized CognitivePacket but must not reinterpret it.
     - user/sensor input may enter the trusted memory path;
-    - assistant/model output must not be written back as factual memory here.
+    - assistant/model output must not be written back as factual memory here;
+    - structured model claims may only enter the ResponseValidator path and remain
+      non-authoritative LLM_GENERATED evidence until an explicit trusted decision.
 
     New adapters should implement ``learn_user`` explicitly. ``learn`` remains a
     legacy compatibility surface only.
@@ -60,4 +87,11 @@ class MemoriaBoundary(Protocol):
     def resolve(self, message: str) -> ResolvedContext: ...
     def learn_user(self, text: str) -> Sequence[str]: ...
     def learn(self, text: str) -> Sequence[str]: ...
+    def validate_model_response(
+        self,
+        *,
+        response_id: str,
+        response_text: str,
+        claims: Sequence[ModelClaim],
+    ) -> Sequence[str]: ...
     def flush(self) -> None: ...
