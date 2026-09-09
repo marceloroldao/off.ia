@@ -6,11 +6,13 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
+import java.util.UUID
 
 class NativeMemoryGateway(context: Context) : MemoryGateway, AutoCloseable {
     companion object {
         private const val DURABLE_STORAGE_ROOT = "memoria-v2"
         private const val MAX_TRAJECTORY_TURNS = 8
+        private const val LOCAL_MODEL_ID = "offia-local"
 
         init {
             System.loadLibrary("offia-memory")
@@ -50,24 +52,30 @@ class NativeMemoryGateway(context: Context) : MemoryGateway, AutoCloseable {
             }
         }
 
-        val json = JSONObject(nativeResolve(requireHandle(), request.toString()))
+        // Gate 2B: the legacy Android resolve surface is retained for UI stability,
+        // but its implementation now consumes the Memoria-owned Context Compiler.
+        // OFF.IA transports the packet and does not reinterpret its relations.
+        val json = JSONObject(nativeCompileContext(requireHandle(), request.toString()))
         val status = when (json.optString("status")) {
             "HIT" -> MemoryStatus.HIT
             "MISS" -> MemoryStatus.MISS
             "UNRESOLVED" -> MemoryStatus.UNRESOLVED
             else -> MemoryStatus.UNAVAILABLE
         }
-        val memoryIds = parseIds(json.optJSONArray("memory_ids"))
-        val context = json.optString("selected_context")
-        val confidence = if (json.has("confidence")) json.optDouble("confidence") else Double.NaN
+        val packet = json.optJSONObject("packet")
+        val memoryIds = parseIds(packet?.optJSONArray("memory_ids"))
+        val confidence = packet?.let {
+            if (it.has("confidence")) it.optDouble("confidence") else Double.NaN
+        } ?: Double.NaN
+        val activation = packet?.optJSONObject("activation")
 
         MemoryResolution(
             status = status,
-            contextItems = if (status == MemoryStatus.HIT && context.isNotBlank()) listOf(context) else emptyList(),
+            contextItems = if (status == MemoryStatus.HIT && packet != null) listOf(json.toString()) else emptyList(),
             memoryIds = memoryIds,
             confidence = confidence.takeUnless { it.isNaN() },
-            trajectoryUsed = json.optBoolean("trajectory_used", false),
-            conversationWindowCount = json.optInt("conversation_window_count", 0),
+            trajectoryUsed = activation?.optBoolean("trajectory_used", false) ?: false,
+            conversationWindowCount = conversationWindow.takeLast(MAX_TRAJECTORY_TURNS).size,
         )
     }
 
@@ -150,8 +158,27 @@ class NativeMemoryGateway(context: Context) : MemoryGateway, AutoCloseable {
 
     override suspend fun learnTurn(userText: String, assistantText: String): MemoryLearnResult =
         withContext(Dispatchers.IO) {
-            val json = JSONObject(nativeLearn(requireHandle(), userText, assistantText))
-            MemoryLearnResult(memoryIds = parseIds(json.optJSONArray("memory_ids")))
+            // The factual write remains USER-only in JNI. After that trusted write,
+            // the model output crosses only the ResponseValidator quarantine path.
+            val learnedJson = JSONObject(nativeLearn(requireHandle(), userText, assistantText))
+            val userMemoryIds = parseIds(learnedJson.optJSONArray("memory_ids"))
+            if (assistantText.isBlank()) {
+                return@withContext MemoryLearnResult(memoryIds = userMemoryIds)
+            }
+
+            val responseId = UUID.randomUUID().toString()
+            val validation = validateModelResponse(
+                query = userText,
+                responseId = responseId,
+                modelId = LOCAL_MODEL_ID,
+                responseText = assistantText,
+            )
+            MemoryLearnResult(
+                memoryIds = userMemoryIds,
+                responseId = validation.responseId,
+                candidateMemoryId = validation.candidateMemoryId,
+                validationStatus = validation.consistencyStatus,
+            )
         }
 
     override suspend fun learnExternalKnowledge(source: ExternalKnowledgeSource): ExternalKnowledgeLearnResult =
