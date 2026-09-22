@@ -59,7 +59,7 @@ internal interface StructuralMemoryTransport {
         request: StructuralObserveRequest,
     ): ServerStructuralObserveResult
 
-    override suspend fun resolve(
+    suspend fun resolve(
         baseUrl: String,
         deviceToken: String,
         request: StructuralResolveRequest,
@@ -194,7 +194,7 @@ internal class HttpStructuralMemoryTransport : StructuralMemoryTransport {
  * device identity.
  */
 interface StructuralTextMemoryClient {
-    override suspend fun observeUserText(
+    suspend fun observeUserText(
         text: String,
         sequence: Long,
         sessionId: String,
@@ -223,7 +223,7 @@ class MemoriaServerStructuralClient internal constructor(
         }
     }
 
-    suspend fun observeUserText(
+    override suspend fun observeUserText(
         text: String,
         sequence: Long,
         sessionId: String,
@@ -249,10 +249,10 @@ class MemoriaServerStructuralClient internal constructor(
         }
     }
 
-    suspend fun resolve(
+    override suspend fun resolve(
         query: String,
-        limit: Int = 3,
-        maxScan: Int = 2048,
+        limit: Int,
+        maxScan: Int,
     ): ServerStructuralResolveResult {
         val normalizedQuery = query.trim()
         require(normalizedQuery.isNotBlank()) { "Consulta estrutural vazia" }
