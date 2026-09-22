@@ -10,6 +10,7 @@ import java.io.File
 class NativeMemoryGateway(
     context: Context,
     storageRoot: String = DURABLE_STORAGE_ROOT,
+    private val legacyFallbackEnabled: Boolean = true,
 ) : MemoryGateway, AutoCloseable {
     companion object {
         private const val DURABLE_STORAGE_ROOT = "memoria-v2"
@@ -92,6 +93,17 @@ class NativeMemoryGateway(
                 status = MemoryStatus.HIT,
                 contextItems = contexts,
                 memoryIds = sourceIds,
+                confidence = null,
+                trajectoryUsed = false,
+                conversationWindowCount = 0,
+            )
+        }
+
+        if (!legacyFallbackEnabled) {
+            return@withContext MemoryResolution(
+                status = MemoryStatus.UNRESOLVED,
+                contextItems = emptyList(),
+                memoryIds = emptyList(),
                 confidence = null,
                 trajectoryUsed = false,
                 conversationWindowCount = 0,
