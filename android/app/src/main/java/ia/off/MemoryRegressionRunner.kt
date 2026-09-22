@@ -43,10 +43,14 @@ class MemoryRegressionRunner(private val gateway: MemoryGateway) {
         val results = mutableListOf<MemoryRegressionResult>()
         for (scenario in scenarios) {
             var activeGateway = gateway
-            for (turn in scenario.setupTurns) {
-                // The assistant side is intentionally empty: these scenarios measure
-                // facts explicitly supplied by the user, not model-generated claims.
-                activeGateway.learnTurn(turn, "")
+            val sessionId = "memory-regression:${scenario.id}"
+            scenario.setupTurns.forEachIndexed { index, turn ->
+                activeGateway.observeUser(
+                    text = turn,
+                    sessionId = sessionId,
+                    sourceId = "memory-regression:${scenario.id}:setup:$index",
+                    sequence = index.toLong(),
+                )
             }
             activeGateway.flush()
 
@@ -65,7 +69,7 @@ class MemoryRegressionRunner(private val gateway: MemoryGateway) {
 
             var resolution = MemoryResolution(MemoryStatus.UNRESOLVED)
             val elapsed = measureTimeMillis {
-                resolution = activeGateway.resolve(scenario.query, sessionId = "memory-regression:${scenario.id}")
+                resolution = activeGateway.resolve(scenario.query, sessionId = sessionId)
             }
             results += evaluate(scenario, resolution, elapsed)
         }
