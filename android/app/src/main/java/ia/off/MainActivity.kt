@@ -719,11 +719,12 @@ fun OffiaChatScreen() {
                                 }
                                 .toList()
                             input = ""
-                            messages += ChatMessage(
+                            val userMessage = ChatMessage(
                                 role = "Você",
                                 text = text,
                                 generation = GenerationMetadata(source = ResponseSource.USER),
                             )
+                            messages += userMessage
                             messages += ChatMessage(
                                 role = "OFF.IA",
                                 text = "…",
@@ -769,8 +770,13 @@ fun OffiaChatScreen() {
                                     if (answer.isEmpty()) {
                                         messages[responseIndex] = messages[responseIndex].copy(text = "O modelo não gerou resposta.")
                                     } else if (memory.available) {
-                                        status = "Offline • aprendendo turno…"
-                                        val learned = memory.learnTurn(text, answer.toString())
+                                        status = "Offline • observando entrada na Memoria.ia V2…"
+                                        val learned = memory.observeUser(
+                                            text = text,
+                                            sessionId = sessionIdForResolve,
+                                            sourceId = userMessage.id,
+                                            sequence = userMessage.createdAt,
+                                        )
                                         memory.flush()
                                         if (learned.memoryIds.isNotEmpty()) {
                                             val currentMemory = messages[responseIndex].memory
