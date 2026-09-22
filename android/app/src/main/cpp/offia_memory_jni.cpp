@@ -126,6 +126,58 @@ Java_ia_off_NativeMemoryGateway_nativeResolve(JNIEnv* env, jobject, jlong handle
 }
 
 extern "C" JNIEXPORT jstring JNICALL
+Java_ia_off_NativeMemoryGateway_nativeResolveStructural(JNIEnv* env, jobject, jlong handle, jstring request_json) {
+    auto* runtime = from_handle(handle);
+    if (!runtime) {
+        throw_illegal_state(env, "Memoria.ia runtime is closed");
+        return nullptr;
+    }
+    try {
+        const std::string request = from_jstring(env, request_json);
+        memoria_mobile_buffer in{
+            reinterpret_cast<const uint8_t*>(request.data()), request.size()
+        };
+        memoria_mobile_buffer out{nullptr, 0};
+        const auto status = memoria_mobile_resolve_structural_text_json(runtime, in, &out);
+        const std::string response = take_response(out);
+        if (status != MEMORIA_MOBILE_OK && status != MEMORIA_MOBILE_UNRESOLVED) {
+            throw_illegal_state(env, "Falha ao consultar trilha estrutural Memoria.ia V2");
+            return nullptr;
+        }
+        return env->NewStringUTF(response.c_str());
+    } catch (const std::exception& e) {
+        throw_illegal_state(env, e.what());
+        return nullptr;
+    }
+}
+
+extern "C" JNIEXPORT jstring JNICALL
+Java_ia_off_NativeMemoryGateway_nativeObserveStructural(JNIEnv* env, jobject, jlong handle, jstring request_json) {
+    auto* runtime = from_handle(handle);
+    if (!runtime) {
+        throw_illegal_state(env, "Memoria.ia runtime is closed");
+        return nullptr;
+    }
+    try {
+        const std::string request = from_jstring(env, request_json);
+        memoria_mobile_buffer in{
+            reinterpret_cast<const uint8_t*>(request.data()), request.size()
+        };
+        memoria_mobile_buffer out{nullptr, 0};
+        const auto status = memoria_mobile_observe_structural_text_json(runtime, in, &out);
+        const std::string response = take_response(out);
+        if (status != MEMORIA_MOBILE_OK) {
+            throw_illegal_state(env, "Falha ao observar entrada na Memoria.ia V2");
+            return nullptr;
+        }
+        return env->NewStringUTF(response.c_str());
+    } catch (const std::exception& e) {
+        throw_illegal_state(env, e.what());
+        return nullptr;
+    }
+}
+
+extern "C" JNIEXPORT jstring JNICALL
 Java_ia_off_NativeMemoryGateway_nativeLearn(JNIEnv* env, jobject, jlong handle, jstring user, jstring assistant) {
     auto* runtime = from_handle(handle);
     if (!runtime) {

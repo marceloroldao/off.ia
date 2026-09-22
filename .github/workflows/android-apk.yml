@@ -75,32 +75,34 @@ jobs:
           grep -q "ctx_params.type_k = GGML_TYPE_Q8_0" android/vendor/llama.cpp/examples/llama.android/lib/src/main/cpp/ai_chat.cpp
           grep -q "ctx_params.type_v = GGML_TYPE_Q8_0" android/vendor/llama.cpp/examples/llama.android/lib/src/main/cpp/ai_chat.cpp
 
-      - name: Checkout pinned Memoria.ia RC6 mobile runtime
+      - name: Checkout pinned Memoria.ia V2 structural mobile runtime
         uses: actions/checkout@v6
         with:
           repository: marceloroldao/memoria.ia
-          ref: 05a537b1534750ec9856cb5f5f6cdc268b5db5f9
+          ref: bd33b9cfcfa78f0e3850fb5e298cbf4cbdc360b9
           path: android/vendor/memoria.ia
 
       - name: Checkout pinned Resolutive-DB Android ABI
         uses: actions/checkout@v6
         with:
           repository: marceloroldao/resolutive-DB
-          ref: 1f6b7ccbe16bdfed2f1b5dcebceb17887bf6916e
+          ref: d09914b85646353d8fd004ccf99e96a94fab9eef
           path: android/vendor/resolutive-DB
 
       - name: Verify pinned runtime identities
         shell: bash
         run: |
           test "$(git -C android/vendor/llama.cpp rev-parse HEAD)" = "ca3d5a3e10d53f7ea672cb9b6178faca3e2807bc"
-          test "$(git -C android/vendor/memoria.ia rev-parse HEAD)" = "05a537b1534750ec9856cb5f5f6cdc268b5db5f9"
-          grep -q 'version = "1.0.0rc6"' android/vendor/memoria.ia/pyproject.toml
+          test "$(git -C android/vendor/memoria.ia rev-parse HEAD)" = "bd33b9cfcfa78f0e3850fb5e298cbf4cbdc360b9"
+          grep -q 'version = "1.0.0rc7"' android/vendor/memoria.ia/pyproject.toml
           grep -q '#define MEMORIA_MOBILE_ABI_VERSION 1' android/vendor/memoria.ia/include/memoria_mobile.h
-          test "$(git -C android/vendor/resolutive-DB rev-parse HEAD)" = "1f6b7ccbe16bdfed2f1b5dcebceb17887bf6916e"
-          grep -Fq 'buildConfigField("String", "MEMORIA_IA_VERSION", "\"v1.0.0-rc6\"")' android/app/build.gradle.kts
-          grep -Fq 'buildConfigField("String", "MEMORIA_IA_COMMIT", "\"05a537b1534750ec9856cb5f5f6cdc268b5db5f9\"")' android/app/build.gradle.kts
+          grep -q 'memoria_mobile_observe_structural_text_json' android/vendor/memoria.ia/include/memoria_mobile.h
+          grep -q 'memoria_mobile_resolve_structural_text_json' android/vendor/memoria.ia/include/memoria_mobile.h
+          test "$(git -C android/vendor/resolutive-DB rev-parse HEAD)" = "d09914b85646353d8fd004ccf99e96a94fab9eef"
+          grep -Fq 'buildConfigField("String", "MEMORIA_IA_VERSION", "\"v2-dev-structural\"")' android/app/build.gradle.kts
+          grep -Fq 'buildConfigField("String", "MEMORIA_IA_COMMIT", "\"bd33b9cfcfa78f0e3850fb5e298cbf4cbdc360b9\"")' android/app/build.gradle.kts
           grep -Fq 'buildConfigField("String", "BDR_VERSION", "\"desconhecida\"")' android/app/build.gradle.kts
-          grep -Fq 'buildConfigField("String", "BDR_COMMIT", "\"1f6b7ccbe16bdfed2f1b5dcebceb17887bf6916e\"")' android/app/build.gradle.kts
+          grep -Fq 'buildConfigField("String", "BDR_COMMIT", "\"d09914b85646353d8fd004ccf99e96a94fab9eef\"")' android/app/build.gradle.kts
           grep -Fq 'buildConfigField("String", "LLAMA_CPP_COMMIT", "\"ca3d5a3e10d53f7ea672cb9b6178faca3e2807bc\"")' android/app/build.gradle.kts
           grep -Fq 'buildConfigField("String", "KV_CACHE_TYPE", "\"Q8_0\"")' android/app/build.gradle.kts
           grep -Fq 'buildConfigField("String", "MEMORIA_MOBILE_ABI", "\"v1\"")' android/app/build.gradle.kts

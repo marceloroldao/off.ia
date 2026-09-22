@@ -50,6 +50,53 @@ class NativeMemoryGateway(context: Context) : MemoryGateway, AutoCloseable {
             }
         }
 
+        val structuralRequest = JSONObject().apply {
+            put("hierarchy_id", structuralHierarchy(sessionId))
+            put("query", message)
+            put("top_k", 3)
+        }
+        val structural = JSONObject(
+            nativeResolveStructural(requireHandle(), structuralRequest.toString()),
+        )
+        if (structural.optString("status") == "HIT") {
+            val contextsJson = structural.optJSONArray("contexts")
+            val contexts = buildList {
+                if (contextsJson != null) {
+                    for (i in 0 until contextsJson.length()) {
+                        val item = contextsJson.optJSONObject(i) ?: continue
+                        item.optString("source_text").takeIf { it.isNotBlank() }?.let(::add)
+                    }
+                }
+            }
+            val sourceIds = buildList {
+                if (contextsJson != null) {
+                    for (i in 0 until contextsJson.length()) {
+                        val item = contextsJson.optJSONObject(i) ?: continue
+                        val ids = item.optJSONArray("source_ids")
+                        if (ids != null) {
+                            for (j in 0 until ids.length()) {
+                                ids.optString(j).takeIf { it.isNotBlank() }?.let(::add)
+                            }
+                        } else {
+                            item.optString("source_id").takeIf { it.isNotBlank() }?.let(::add)
+                        }
+                    }
+                }
+            }.distinct()
+            // Structural score is a ranking weight, not a calibrated probability.
+            // Do not expose it through the legacy confidence field.
+            return@withContext MemoryResolution(
+                status = MemoryStatus.HIT,
+                contextItems = contexts,
+                memoryIds = sourceIds,
+                confidence = null,
+                trajectoryUsed = false,
+                conversationWindowCount = 0,
+            )
+        }
+
+        // Migration fallback: pre-V2 RC6 memories remain queryable while new
+        // user observations accumulate in the structural trail.
         val json = JSONObject(nativeResolve(requireHandle(), request.toString()))
         val status = when (json.optString("status")) {
             "HIT" -> MemoryStatus.HIT
@@ -76,6 +123,27 @@ class NativeMemoryGateway(context: Context) : MemoryGateway, AutoCloseable {
             val json = JSONObject(nativeLearn(requireHandle(), userText, assistantText))
             MemoryLearnResult(memoryIds = parseIds(json.optJSONArray("memory_ids")))
         }
+
+    override suspend fun observeUser(
+        text: String,
+        sessionId: String?,
+        sourceId: String,
+        sequence: Long,
+    ): MemoryLearnResult = withContext(Dispatchers.IO) {
+        require(text.isNotBlank()) { "Observação do usuário vazia" }
+        require(sequence >= 0L) { "Sequência estrutural inválida" }
+        val effectiveSourceId = sourceId.ifBlank { "offia-user-$sequence" }
+        val request = JSONObject().apply {
+            put("hierarchy_id", structuralHierarchy(sessionId))
+            put("source_id", effectiveSourceId)
+            put("source_kind", "user_assertion")
+            put("sequence", sequence)
+            put("text", text)
+        }
+        val json = JSONObject(nativeObserveStructural(requireHandle(), request.toString()))
+        check(json.optString("status") == "OK") { "Memoria.ia V2 rejeitou observação do usuário" }
+        MemoryLearnResult(memoryIds = listOf(effectiveSourceId))
+    }
 
     override suspend fun learnExternalKnowledge(source: ExternalKnowledgeSource): ExternalKnowledgeLearnResult =
         withContext(Dispatchers.IO) {
@@ -156,6 +224,9 @@ class NativeMemoryGateway(context: Context) : MemoryGateway, AutoCloseable {
         check(it != 0L) { "Memoria.ia runtime fechado" }
     }
 
+    private fun structuralHierarchy(sessionId: String?): String =
+        "conversation:" + sessionId?.takeIf { it.isNotBlank() }.orEmpty().ifBlank { "default" }
+
     private fun parseIds(array: JSONArray?): List<String> = buildList {
         if (array != null) {
             for (i in 0 until array.length()) {
@@ -168,6 +239,8 @@ class NativeMemoryGateway(context: Context) : MemoryGateway, AutoCloseable {
     private external fun nativeOpen(path: String): Long
     private external fun nativeClose(handle: Long)
     private external fun nativeResolve(handle: Long, requestJson: String): String
+    private external fun nativeResolveStructural(handle: Long, requestJson: String): String
+    private external fun nativeObserveStructural(handle: Long, requestJson: String): String
     private external fun nativeLearn(handle: Long, user: String, assistant: String): String
     private external fun nativeLearnExternal(handle: Long, requestJson: String): String
     private external fun nativeExport(handle: Long, requestJson: String): String
