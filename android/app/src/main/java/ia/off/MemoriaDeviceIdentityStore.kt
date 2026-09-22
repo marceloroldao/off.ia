@@ -68,7 +68,12 @@ class MemoriaDeviceIdentityStore(context: Context) : MemoriaDeviceIdentityProvid
         }
         val rawPublic = Codec.rawEd25519PublicKey(pair.public.encoded)
         val publicText = "ed25519:" + Codec.base64Url(rawPublic)
-        val wrapped = encryptPrivateKey(pair.private.encoded)
+        val privatePkcs8 = pair.private.encoded
+        val wrapped = try {
+            encryptPrivateKey(privatePkcs8)
+        } finally {
+            privatePkcs8.fill(0)
+        }
 
         check(
             prefs.edit()
@@ -162,7 +167,11 @@ class MemoriaDeviceIdentityStore(context: Context) : MemoriaDeviceIdentityProvid
         } catch (error: Exception) {
             throw IllegalStateException("Não foi possível abrir a identidade Ed25519 persistida", error)
         }
-        return KeyFactory.getInstance("Ed25519").generatePrivate(PKCS8EncodedKeySpec(encoded))
+        return try {
+            KeyFactory.getInstance("Ed25519").generatePrivate(PKCS8EncodedKeySpec(encoded))
+        } finally {
+            encoded.fill(0)
+        }
     }
 
     private fun wrappingKey(): SecretKey {
