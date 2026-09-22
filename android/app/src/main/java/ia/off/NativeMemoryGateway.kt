@@ -7,7 +7,10 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 
-class NativeMemoryGateway(\n    context: Context,\n    storageRoot: String = DURABLE_STORAGE_ROOT,\n) : MemoryGateway, AutoCloseable {
+class NativeMemoryGateway(
+    context: Context,
+    storageRoot: String = DURABLE_STORAGE_ROOT,
+) : MemoryGateway, AutoCloseable {
     companion object {
         private const val DURABLE_STORAGE_ROOT = "memoria-v2"
         private const val MAX_TRAJECTORY_TURNS = 8
