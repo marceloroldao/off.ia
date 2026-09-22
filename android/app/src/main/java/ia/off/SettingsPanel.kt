@@ -30,11 +30,13 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
 
 private tailrec fun Context.findActivity(): Activity? = when (this) {
     is Activity -> this
@@ -66,6 +68,10 @@ fun SettingsPanel(
     var deleteCandidate by remember { mutableStateOf<InstalledModel?>(null) }
     var detailsCandidate by remember { mutableStateOf<InstalledModel?>(null) }
     var modelSelectionError by remember { mutableStateOf<String?>(null) }
+    val diagnosticScope = rememberCoroutineScope()
+    var v2DiagnosticRunning by remember { mutableStateOf(false) }
+    var v2DiagnosticReport by remember { mutableStateOf<MemoryRegressionReport?>(null) }
+    var v2DiagnosticError by remember { mutableStateOf<String?>(null) }
     val defaultModel = ModelCatalog.defaultModel
     val downloadActive = modelDownloadState is ModelDownloadState.Downloading ||
         modelDownloadState is ModelDownloadState.Verifying
@@ -234,6 +240,98 @@ fun SettingsPanel(
                         clipboard.setPrimaryClip(ClipData.newPlainText("OFF.IA diagnóstico", diagnostics))
                     }) {
                         Text("Copiar diagnóstico completo")
+                    }
+
+                    HorizontalDivider()
+                    Text(
+                        "Gate Memoria.ia V2",
+                        style = MaterialTheme.typography.titleSmall,
+                    )
+                    Text(
+                        "Executa a bateria estrutural contra o runtime nativo + BDR em uma base isolada. A memória real das conversas não é modificada.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    OutlinedButton(
+                        enabled = memoryAvailable && !v2DiagnosticRunning,
+                        onClick = {
+                            v2DiagnosticRunning = true
+                            v2DiagnosticReport = null
+                            v2DiagnosticError = null
+                            diagnosticScope.launch {
+                                runCatching {
+                                    runStructuralV2DeviceDiagnostics(context)
+                                }.onSuccess { report ->
+                                    v2DiagnosticReport = report
+                                }.onFailure { error ->
+                                    v2DiagnosticError = error.message ?: error.javaClass.simpleName
+                                }
+                                v2DiagnosticRunning = false
+                            }
+                        },
+                    ) {
+                        Text(
+                            if (v2DiagnosticRunning) {
+                                "Testando Memoria.ia V2…"
+                            } else {
+                                "Testar Memoria.ia V2 no aparelho"
+                            },
+                        )
+                    }
+
+                    if (v2DiagnosticRunning) {
+                        LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    }
+
+                    v2DiagnosticError?.let { error ->
+                        Text(
+                            "Falha no diagnóstico V2: $error",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+
+                    v2DiagnosticReport?.let { report ->
+                        val allPassed =
+                            report.passed == report.results.size &&
+                            report.failed == 0 &&
+                            report.restartRequired == 0 &&
+                            report.unavailable == 0
+                        Text(
+                            if (allPassed) {
+                                "V2: PASS " + report.passed + "/" + report.results.size
+                            } else {
+                                "V2: " + report.passed + "/" + report.results.size +
+                                    " PASS • " + report.failed + " FAIL"
+                            },
+                            style = MaterialTheme.typography.labelMedium,
+                        )
+                        report.results.forEach { result ->
+                            Text(
+                                buildString {
+                                    append(
+                                        if (result.outcome == MemoryRegressionOutcome.PASS) "✓ " else "✗ ",
+                                    )
+                                    append(result.scenario.id)
+                                    append(" • ")
+                                    append(result.status.name)
+                                    append(" • ")
+                                    append(result.latencyMs)
+                                    append(" ms")
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                        OutlinedButton(onClick = {
+                            val clipboard =
+                                context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            clipboard.setPrimaryClip(
+                                ClipData.newPlainText(
+                                    "OFF.IA Memoria.ia V2",
+                                    report.toStructuralV2DiagnosticText(),
+                                ),
+                            )
+                        }) {
+                            Text("Copiar relatório V2")
+                        }
                     }
                 }
             }
