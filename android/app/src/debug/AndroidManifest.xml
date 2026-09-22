@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!--
+      Laboratory/debug builds may connect to a Memoria.ia Server running on
+      the local LAN over plain HTTP. This override exists only in src/debug;
+      release/main keeps Android's default cleartext prohibition.
+    -->
+    <application android:usesCleartextTraffic="true" />
+</manifest>
