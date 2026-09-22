@@ -59,7 +59,7 @@ internal interface StructuralMemoryTransport {
         request: StructuralObserveRequest,
     ): ServerStructuralObserveResult
 
-    suspend fun resolve(
+    override suspend fun resolve(
         baseUrl: String,
         deviceToken: String,
         request: StructuralResolveRequest,
@@ -193,11 +193,25 @@ internal class HttpStructuralMemoryTransport : StructuralMemoryTransport {
  * those ownership fields are derived by Memoria.ia Server from the authenticated
  * device identity.
  */
+interface StructuralTextMemoryClient {
+    override suspend fun observeUserText(
+        text: String,
+        sequence: Long,
+        sessionId: String,
+    ): ServerStructuralObserveResult
+
+    suspend fun resolve(
+        query: String,
+        limit: Int = 3,
+        maxScan: Int = 2048,
+    ): ServerStructuralResolveResult
+}
+
 class MemoriaServerStructuralClient internal constructor(
     serverBaseUrl: String,
     private val tokenProvider: DeviceTokenProvider,
     private val transport: StructuralMemoryTransport,
-) {
+) : StructuralTextMemoryClient {
     constructor(
         serverBaseUrl: String,
         tokenProvider: DeviceTokenProvider,
@@ -308,3 +322,38 @@ internal fun selectLaboratoryMemoryResolution(
     } else {
         local
     }
+
+
+data class StructuralTurnGateResult(
+    val resolution: MemoryResolution?,
+    val observed: Boolean,
+)
+
+internal suspend fun resolveThenObserveUserText(
+    client: StructuralTextMemoryClient?,
+    userText: String,
+    sequence: Long,
+    sessionId: String,
+): StructuralTurnGateResult {
+    if (client == null) {
+        return StructuralTurnGateResult(resolution = null, observed = false)
+    }
+    val resolution = runCatching {
+        client.resolve(userText).toMemoryResolution()
+    }.getOrNull()
+
+    // Observation intentionally happens only after resolve has completed.
+    // Therefore the current query cannot reinforce its own lookup.
+    val observed = runCatching {
+        client.observeUserText(
+            text = userText,
+            sequence = sequence,
+            sessionId = sessionId,
+        )
+    }.isSuccess
+
+    return StructuralTurnGateResult(
+        resolution = resolution,
+        observed = observed,
+    )
+}
