@@ -78,3 +78,36 @@ admin creates enrollment invitation with memory.sync
   -> force-stop/reopen
   -> resolve again with the same device identity
 ```
+
+
+## Laboratory chat gate
+
+The normal product path still uses the local RC6 MemoryGateway. When all of the
+following are true:
+
+- Laboratory Mode is enabled;
+- the device is paired with a Memoria.ia Server;
+- online capabilities are not blocked;
+
+the chat performs an experimental structural V2 lookup before local generation.
+
+Selection rule:
+
+```text
+structural V2 HIT with non-empty context -> use structural context
+otherwise -> keep the existing local RC6 resolution
+```
+
+Turn ordering is fixed:
+
+```text
+resolve(current question against past observations)
+  -> generate locally with llama.cpp
+  -> keep existing local RC6 learning for compatibility
+  -> observe only the completed USER text in structural V2
+```
+
+The assistant/LLM response is never submitted to the structural V2 trail. The
+current question is not observed until after its resolution/generation cycle,
+preventing self-reinforcement. The per-session structural sequence is derived
+from the number of prior user turns in the persisted conversation.
