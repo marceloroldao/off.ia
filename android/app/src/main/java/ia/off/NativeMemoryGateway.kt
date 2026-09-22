@@ -7,7 +7,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 
-class NativeMemoryGateway(context: Context) : MemoryGateway, AutoCloseable {
+class NativeMemoryGateway(\n    context: Context,\n    storageRoot: String = DURABLE_STORAGE_ROOT,\n) : MemoryGateway, AutoCloseable {
     companion object {
         private const val DURABLE_STORAGE_ROOT = "memoria-v2"
         private const val MAX_TRAJECTORY_TURNS = 8
@@ -20,7 +20,7 @@ class NativeMemoryGateway(context: Context) : MemoryGateway, AutoCloseable {
     private var handle: Long
 
     init {
-        val storage = File(context.filesDir, DURABLE_STORAGE_ROOT).apply { mkdirs() }
+        val storage = File(context.filesDir, storageRoot).apply { mkdirs() }
         handle = nativeOpen(storage.absolutePath)
         check(handle != 0L) { "Falha ao abrir Memoria.ia nativa" }
     }
