@@ -24,6 +24,7 @@ suspend fun runStructuralV2DeviceDiagnostics(context: Context): MemoryRegression
     var current = NativeMemoryGateway(
         context = appContext,
         storageRoot = V2_DIAGNOSTIC_STORAGE_ROOT,
+        legacyFallbackEnabled = false,
     )
 
     return try {
