@@ -22,6 +22,7 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -30,11 +31,14 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.launch
 
 private tailrec fun Context.findActivity(): Activity? = when (this) {
     is Activity -> this
@@ -61,6 +65,14 @@ fun SettingsPanel(
     val context = hostContext.applicationContext
     val store = remember { AppSettingsStore(context) }
     val modelManager = remember { ModelManager(context) }
+    val deviceIdentity = remember { MemoriaDeviceIdentityStore(context) }
+    val pairingScope = rememberCoroutineScope()
+    var deviceBinding by remember { mutableStateOf(runCatching { deviceIdentity.loadBinding() }.getOrNull()) }
+    var serverUrl by remember { mutableStateOf(deviceBinding?.serverBaseUrl.orEmpty()) }
+    var enrollmentCode by remember { mutableStateOf("") }
+    var deviceName by remember { mutableStateOf("OFF.IA Android") }
+    var pairingBusy by remember { mutableStateOf(false) }
+    var pairingStatus by remember { mutableStateOf<String?>(null) }
     var settings by remember { mutableStateOf(store.load()) }
     var installedModels by remember { mutableStateOf(modelManager.installedModels()) }
     var deleteCandidate by remember { mutableStateOf<InstalledModel?>(null) }
@@ -159,6 +171,121 @@ fun SettingsPanel(
                 )
                 OutlinedButton(enabled = memoryAvailable && !downloadActive, onClick = onExportMemory) {
                     Text("Exportar diagnóstico")
+                }
+
+                HorizontalDivider()
+                Text("Servidor Memoria.ia", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    "Pareamento opcional para memória estrutural V2. A chave administrativa do servidor nunca é armazenada no OFF.IA.",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+
+                val binding = deviceBinding
+                if (binding == null) {
+                    OutlinedTextField(
+                        value = serverUrl,
+                        onValueChange = { serverUrl = it },
+                        enabled = !pairingBusy,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("URL do servidor") },
+                        placeholder = { Text("https://memoria.exemplo") },
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = enrollmentCode,
+                        onValueChange = { enrollmentCode = it },
+                        enabled = !pairingBusy,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Código de enrollment") },
+                        visualTransformation = PasswordVisualTransformation(),
+                        singleLine = true,
+                    )
+                    OutlinedTextField(
+                        value = deviceName,
+                        onValueChange = { deviceName = it },
+                        enabled = !pairingBusy,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text("Nome deste OFF.IA") },
+                        singleLine = true,
+                    )
+                    OutlinedButton(
+                        enabled = !pairingBusy &&
+                            serverUrl.isNotBlank() &&
+                            enrollmentCode.isNotBlank() &&
+                            deviceName.isNotBlank(),
+                        onClick = {
+                            pairingBusy = true
+                            pairingStatus = "Enviando chave pública para enrollment…"
+                            pairingScope.launch {
+                                try {
+                                    val result = MemoriaDeviceEnrollmentClient(deviceIdentity).claim(
+                                        serverBaseUrl = serverUrl,
+                                        enrollmentCode = enrollmentCode,
+                                        deviceName = deviceName,
+                                    )
+                                    deviceBinding = deviceIdentity.loadBinding()
+                                    enrollmentCode = ""
+                                    pairingStatus = when (result.status) {
+                                        "pending_approval" ->
+                                            "Dispositivo registrado • aguardando aprovação no servidor"
+                                        else -> "Enrollment concluído • ${result.status}"
+                                    }
+                                } catch (error: Exception) {
+                                    pairingStatus = "Falha no enrollment • ${error.message ?: error.javaClass.simpleName}"
+                                } finally {
+                                    pairingBusy = false
+                                }
+                            }
+                        },
+                    ) {
+                        Text(if (pairingBusy) "Vinculando…" else "Vincular ao servidor")
+                    }
+                } else {
+                    Text(
+                        "Vinculado • ${binding.serverBaseUrl}",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Text(
+                        "device_id: ${binding.deviceId}",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    OutlinedButton(
+                        enabled = !pairingBusy,
+                        onClick = {
+                            pairingBusy = true
+                            pairingStatus = "Autenticando dispositivo e validando memory.sync…"
+                            pairingScope.launch {
+                                try {
+                                    val tokenProvider = MemoriaDeviceTokenProvider(deviceIdentity)
+                                    val structural = MemoriaServerStructuralClient(
+                                        binding.serverBaseUrl,
+                                        tokenProvider,
+                                    )
+                                    val probe = structural.resolve(
+                                        query = "__offia_memory_sync_probe__",
+                                        limit = 1,
+                                        maxScan = 1,
+                                    )
+                                    pairingStatus =
+                                        "Servidor autenticado • memory.sync OK • ${probe.status}"
+                                } catch (error: Exception) {
+                                    pairingStatus =
+                                        "Servidor ainda não autorizou o dispositivo • ${error.message ?: error.javaClass.simpleName}"
+                                } finally {
+                                    pairingBusy = false
+                                }
+                            }
+                        },
+                    ) {
+                        Text(if (pairingBusy) "Testando…" else "Testar memory.sync")
+                    }
+                    Text(
+                        "O vínculo é intencionalmente fixo. Trocar de servidor/dispositivo exige um fluxo explícito de rotação, ainda não implementado.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                pairingStatus?.let { status ->
+                    Text(status, style = MaterialTheme.typography.bodySmall)
                 }
             }
 
