@@ -6,11 +6,12 @@ The first Android target is deliberately small: a single local chat screen that 
 
 ```text
 user message
-  -> Memoria.ia resolve
+  -> Memoria.ia semantic resolve + structural read-only resolve
   -> selected context
   -> llama.cpp local GGUF inference
   -> assistant response
-  -> Memoria.ia learns USER + ASSISTANT turn immediately
+  -> Memoria.ia persists the conversation turn
+  -> OFF.IA explicitly observes only the USER text in the structural trail
   -> BDR durable persistence
   -> next message can use the new memory without restarting
 ```

@@ -48,17 +48,19 @@ Available behavior includes ordered/time-addressable generic episodes, selected 
 
 **Status:** MEMORIA.IA SIDE SUBSTANTIALLY COMPLETE; OFF.IA DEVICE ACCEPTANCE REMAINS.
 
-Current OFF.IA Android consumes the frozen Memoria.ia mobile ABI v1 and durable atomic BDR path rather than the superseded draft PR #51 interface.
+Current OFF.IA Android consumes the additive Memoria.ia mobile ABI v1 from the V2 development line and the same durable atomic BDR path rather than reimplementing memory logic in the app.
 
 Current integration includes:
 
 - semantic/relational resolve;
+- non-semantic structural text observe/resolve with recurrence and causal association owned by Memoria.ia;
+- explicit user-only structural observation; assistant/LLM output is not auto-observed;
 - provenance/anti-self-confirmation;
 - episodic recall;
-- exact selected context + IDs + confidence;
-- BDR-backed restart reconstruction;
+- exact selected context + IDs + confidence where defined;
+- BDR-backed structural replay and restart reconstruction;
 - arm64-v8a native build/link;
-- active-session trajectory-capable resolve on the current pinned Memoria.ia runtime.
+- active-session trajectory-capable resolve on the pinned Memoria.ia runtime.
 
 Remaining acceptance is consumer/device evidence tracked in OFF.IA Issue #3: same-session paraphrase, kill/restart durable recall and airplane-mode end-to-end behavior.
 

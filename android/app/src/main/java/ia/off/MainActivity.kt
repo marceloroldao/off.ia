@@ -706,6 +706,8 @@ fun OffiaChatScreen() {
 
                             val text = input.trim()
                             val sessionIdForResolve = activeSessionId
+                            val structuralHierarchyId = "conversation:$sessionIdForResolve"
+                            val structuralSequence = messages.count { it.role == "Você" }.toLong() + 1L
                             val trajectoryWindow = messages
                                 .asSequence()
                                 .filter { it.text.isNotBlank() && it.text != "…" }
@@ -735,7 +737,16 @@ fun OffiaChatScreen() {
                                 saveWorkspace()
                                 status = "Offline • consultando memória local…"
                                 try {
-                                    val resolution = memory.resolve(text, sessionIdForResolve, trajectoryWindow)
+                                    val semanticResolution = memory.resolve(text, sessionIdForResolve, trajectoryWindow)
+                                    val structuralResolution = memory.resolveStructuralText(
+                                        query = text,
+                                        hierarchyId = structuralHierarchyId,
+                                        topK = 3,
+                                    )
+                                    val resolution = mergeMemoryResolutions(
+                                        semantic = semanticResolution,
+                                        structural = structuralResolution,
+                                    )
                                     lastMemoryStatus = resolution.status
                                     lastMemoryIds = resolution.memoryIds
                                     lastTrajectoryUsed = resolution.trajectoryUsed
@@ -771,6 +782,15 @@ fun OffiaChatScreen() {
                                     } else if (memory.available) {
                                         status = "Offline • aprendendo turno…"
                                         val learned = memory.learnTurn(text, answer.toString())
+                                        learned.memoryIds.firstOrNull()?.let { userMemoryId ->
+                                            memory.observeStructuralText(
+                                                text = text,
+                                                hierarchyId = structuralHierarchyId,
+                                                sourceId = userMemoryId,
+                                                sequence = structuralSequence,
+                                                sourceKind = "user_assertion",
+                                            )
+                                        }
                                         memory.flush()
                                         if (learned.memoryIds.isNotEmpty()) {
                                             val currentMemory = messages[responseIndex].memory
