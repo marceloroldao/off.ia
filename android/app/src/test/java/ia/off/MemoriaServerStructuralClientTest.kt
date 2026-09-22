@@ -233,4 +233,53 @@ class MemoriaServerStructuralClientTest {
         assertTrue(memory.contextItems.isEmpty())
     }
 
+
+    @Test
+    fun laboratorySelectionUsesStructuralOnlyForRealHit() {
+        val local = MemoryResolution(
+            status = MemoryStatus.HIT,
+            contextItems = listOf("contexto local"),
+            memoryIds = listOf("local-1"),
+        )
+        val structuralHit = MemoryResolution(
+            status = MemoryStatus.HIT,
+            contextItems = listOf("contexto estrutural"),
+            memoryIds = listOf("obs-1"),
+        )
+        val structuralMiss = MemoryResolution(
+            status = MemoryStatus.UNRESOLVED,
+            contextItems = emptyList(),
+        )
+
+        assertEquals(
+            structuralHit,
+            selectLaboratoryMemoryResolution(local, structuralHit),
+        )
+        assertEquals(
+            local,
+            selectLaboratoryMemoryResolution(local, structuralMiss),
+        )
+        assertEquals(
+            local,
+            selectLaboratoryMemoryResolution(local, null),
+        )
+    }
+
+    @Test
+    fun laboratorySelectionRejectsEmptyStructuralHit() {
+        val local = MemoryResolution(
+            status = MemoryStatus.MISS,
+            contextItems = emptyList(),
+        )
+        val emptyHit = MemoryResolution(
+            status = MemoryStatus.HIT,
+            contextItems = emptyList(),
+        )
+
+        assertEquals(
+            local,
+            selectLaboratoryMemoryResolution(local, emptyHit),
+        )
+    }
+
 }
