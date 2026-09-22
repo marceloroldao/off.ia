@@ -34,10 +34,6 @@ class MemoriaDeviceIdentityStore(context: Context) {
         private const val SERVER_BASE_URL = "server_base_url"
         private const val DEVICE_ID = "device_id"
         private const val AES_ALIAS = "offia-memoria-device-wrap-v1"
-        private val ED25519_SPKI_PREFIX = byteArrayOf(
-            0x30, 0x2a, 0x30, 0x05, 0x06, 0x03,
-            0x2b, 0x65, 0x70, 0x03, 0x21, 0x00,
-        )
     }
 
     private val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -63,8 +59,8 @@ class MemoriaDeviceIdentityStore(context: Context) {
         } catch (error: Exception) {
             throw IllegalStateException("Este Android não disponibiliza geração Ed25519", error)
         }
-        val rawPublic = rawEd25519PublicKey(pair.public.encoded)
-        val publicText = "ed25519:" + base64Url(rawPublic)
+        val rawPublic = Codec.rawEd25519PublicKey(pair.public.encoded)
+        val publicText = "ed25519:" + Codec.base64Url(rawPublic)
         val wrapped = encryptPrivateKey(pair.private.encoded)
 
         check(
@@ -81,7 +77,7 @@ class MemoriaDeviceIdentityStore(context: Context) {
     @Synchronized
     fun bind(serverBaseUrl: String, deviceId: String): MemoriaDeviceIdentity {
         val identity = loadOrCreate()
-        val normalizedServer = normalizeServerBaseUrl(serverBaseUrl)
+        val normalizedServer = Codec.normalizeServerBaseUrl(serverBaseUrl)
         val normalizedDevice = deviceId.trim()
         require(normalizedDevice.isNotBlank()) { "deviceId vazio" }
 
@@ -114,7 +110,7 @@ class MemoriaDeviceIdentityStore(context: Context) {
             "Estado de vínculo Memoria.ia incompleto"
         }
         return MemoriaDeviceBinding(
-            serverBaseUrl = normalizeServerBaseUrl(server),
+            serverBaseUrl = Codec.normalizeServerBaseUrl(server),
             deviceId = device,
         )
     }
@@ -187,7 +183,12 @@ class MemoriaDeviceIdentityStore(context: Context) {
         return generator.generateKey()
     }
 
-    internal companion object Codec {
+    internal object Codec {
+        private val ED25519_SPKI_PREFIX = byteArrayOf(
+            0x30, 0x2a, 0x30, 0x05, 0x06, 0x03,
+            0x2b, 0x65, 0x70, 0x03, 0x21, 0x00,
+        )
+
         fun normalizeServerBaseUrl(value: String): String =
             value.trim().trimEnd('/').also {
                 require(it.startsWith("http://") || it.startsWith("https://")) {
