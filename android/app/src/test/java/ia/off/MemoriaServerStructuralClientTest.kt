@@ -181,4 +181,56 @@ class MemoriaServerStructuralClientTest {
         assertEquals(null, transport.observeRequest)
         assertEquals(null, transport.resolveRequest)
     }
+
+    @Test
+    fun structuralHitAdaptsToExistingMemoryResolutionWithoutSemanticProjection() {
+        val structural = ServerStructuralResolveResult(
+            status = "HIT",
+            contexts = listOf(
+                ServerStructuralContext(
+                    sourceText = "Meu gato se chama Alt",
+                    score = 1.2,
+                    exactOverlap = 2,
+                    associationMass = 0.2,
+                    observationIds = listOf("obs-1"),
+                ),
+                ServerStructuralContext(
+                    sourceText = "Meu gato dorme no sofá",
+                    score = 0.9,
+                    exactOverlap = 1,
+                    associationMass = 0.1,
+                    observationIds = listOf("obs-2"),
+                ),
+            ),
+            scannedObservations = 3,
+            querySymbolCount = 5,
+            semanticProjection = false,
+        )
+
+        val memory = structural.toMemoryResolution()
+
+        assertEquals(MemoryStatus.HIT, memory.status)
+        assertEquals(
+            listOf("Meu gato se chama Alt", "Meu gato dorme no sofá"),
+            memory.contextItems,
+        )
+        assertEquals(listOf("obs-1", "obs-2"), memory.memoryIds)
+        assertEquals(1.2, memory.confidence ?: 0.0, 0.000001)
+        assertFalse(memory.trajectoryUsed)
+    }
+
+    @Test
+    fun emptyStructuralHitFailsClosedAsUnresolved() {
+        val memory = ServerStructuralResolveResult(
+            status = "HIT",
+            contexts = emptyList(),
+            scannedObservations = 0,
+            querySymbolCount = 2,
+            semanticProjection = false,
+        ).toMemoryResolution()
+
+        assertEquals(MemoryStatus.UNRESOLVED, memory.status)
+        assertTrue(memory.contextItems.isEmpty())
+    }
+
 }
