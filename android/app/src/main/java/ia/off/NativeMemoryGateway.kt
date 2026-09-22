@@ -83,16 +83,13 @@ class NativeMemoryGateway(context: Context) : MemoryGateway, AutoCloseable {
                     }
                 }
             }.distinct()
-            val confidence = contextsJson
-                ?.optJSONObject(0)
-                ?.optDouble("score", Double.NaN)
-                ?.takeUnless { it.isNaN() }
-
+            // Structural score is a ranking weight, not a calibrated probability.
+            // Do not expose it through the legacy confidence field.
             return@withContext MemoryResolution(
                 status = MemoryStatus.HIT,
                 contextItems = contexts,
                 memoryIds = sourceIds,
-                confidence = confidence,
+                confidence = null,
                 trajectoryUsed = false,
                 conversationWindowCount = 0,
             )
