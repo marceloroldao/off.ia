@@ -68,6 +68,19 @@ interface MemoryGateway {
     suspend fun learnTurn(userText: String, assistantText: String): MemoryLearnResult
 
     /**
+     * Records only the user's observation in the V2 structural trail.
+     * The generated assistant answer is deliberately excluded from this path.
+     *
+     * Default keeps legacy/test gateways source-compatible until they opt in.
+     */
+    suspend fun observeUser(
+        text: String,
+        sessionId: String? = null,
+        sourceId: String = "",
+        sequence: Long = 0L,
+    ): MemoryLearnResult = learnTurn(text, "")
+
+    /**
      * Delegates approved public/external knowledge to Memoria.ia.
      * OFF.IA supplies acquisition metadata only; authority, deduplication,
      * conflict handling, provenance and BDR persistence remain Memoria.ia-owned.
