@@ -25,7 +25,14 @@ data class MemoriaDeviceIdentity(
     val binding: MemoriaDeviceBinding?,
 )
 
-class MemoriaDeviceIdentityStore(context: Context) {
+interface MemoriaDeviceIdentityProvider {
+    fun loadOrCreate(): MemoriaDeviceIdentity
+    fun bind(serverBaseUrl: String, deviceId: String): MemoriaDeviceIdentity
+    fun loadBinding(): MemoriaDeviceBinding?
+    fun sign(message: ByteArray): ByteArray
+}
+
+class MemoriaDeviceIdentityStore(context: Context) : MemoriaDeviceIdentityProvider {
     companion object {
         private const val PREFS = "offia-memoria-device-v1"
         private const val PUBLIC_KEY = "ed25519_public_key"
@@ -39,7 +46,7 @@ class MemoriaDeviceIdentityStore(context: Context) {
     private val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
     @Synchronized
-    fun loadOrCreate(): MemoriaDeviceIdentity {
+    override fun loadOrCreate(): MemoriaDeviceIdentity {
         val existingPublic = prefs.getString(PUBLIC_KEY, null)?.trim().orEmpty()
         val existingCiphertext = prefs.getString(PRIVATE_KEY_CIPHERTEXT, null)?.trim().orEmpty()
         val existingIv = prefs.getString(PRIVATE_KEY_IV, null)?.trim().orEmpty()
@@ -75,7 +82,7 @@ class MemoriaDeviceIdentityStore(context: Context) {
     }
 
     @Synchronized
-    fun bind(serverBaseUrl: String, deviceId: String): MemoriaDeviceIdentity {
+    override fun bind(serverBaseUrl: String, deviceId: String): MemoriaDeviceIdentity {
         val identity = loadOrCreate()
         val normalizedServer = Codec.normalizeServerBaseUrl(serverBaseUrl)
         val normalizedDevice = deviceId.trim()
@@ -102,7 +109,7 @@ class MemoriaDeviceIdentityStore(context: Context) {
     }
 
     @Synchronized
-    fun loadBinding(): MemoriaDeviceBinding? {
+    override fun loadBinding(): MemoriaDeviceBinding? {
         val server = prefs.getString(SERVER_BASE_URL, null)?.trim().orEmpty()
         val device = prefs.getString(DEVICE_ID, null)?.trim().orEmpty()
         if (server.isBlank() && device.isBlank()) return null
@@ -116,7 +123,7 @@ class MemoriaDeviceIdentityStore(context: Context) {
     }
 
     @Synchronized
-    fun sign(message: ByteArray): ByteArray {
+    override fun sign(message: ByteArray): ByteArray {
         require(message.isNotEmpty()) { "Mensagem Ed25519 vazia" }
         val signature = Signature.getInstance("Ed25519")
         signature.initSign(decryptPrivateKey())
