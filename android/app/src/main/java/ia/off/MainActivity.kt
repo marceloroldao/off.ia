@@ -751,18 +751,21 @@ fun OffiaChatScreen() {
                                 status = "Offline • consultando memória local…"
                                 try {
                                     val localResolution = memory.resolve(text, sessionIdForResolve, trajectoryWindow)
-                                    var resolution = localResolution
                                     var structuralResolutionStatus: MemoryStatus? = null
-                                    if (structuralClient != null) {
+                                    val structuralResolution = if (structuralClient != null) {
                                         status = "Híbrido • consultando memória estrutural V2…"
-                                        val structuralResolution = runCatching {
+                                        runCatching {
                                             structuralClient.resolve(text).toMemoryResolution()
-                                        }.getOrNull()
-                                        structuralResolutionStatus = structuralResolution?.status
-                                        if (structuralResolution?.status == MemoryStatus.HIT) {
-                                            resolution = structuralResolution
+                                        }.getOrNull().also {
+                                            structuralResolutionStatus = it?.status
                                         }
+                                    } else {
+                                        null
                                     }
+                                    val resolution = selectLaboratoryMemoryResolution(
+                                        local = localResolution,
+                                        structural = structuralResolution,
+                                    )
 
                                     lastMemoryStatus = resolution.status
                                     lastMemoryIds = resolution.memoryIds
