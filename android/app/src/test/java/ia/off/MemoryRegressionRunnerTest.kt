@@ -34,6 +34,44 @@ class MemoryRegressionRunnerTest {
     }
 
     @Test
+    fun structuralV2RequiresPreferredAttractorWithoutDeletingOlderEvidence() = runBlocking {
+        val gateway = FakeGateway(
+            mapOf(
+                "Como se chama meu gato?" to listOf(
+                    "Meu gato se chama Alt2.",
+                    "Meu gato se chama Alt.",
+                ),
+            ),
+        )
+        val scenario = StructuralV2MemoryRegressionCatalog.scenarios
+            .first { it.id == "v2-conflict-cat-recurrence" }
+
+        val result = MemoryRegressionRunner(gateway).run(listOf(scenario)).results.single()
+
+        assertEquals(MemoryRegressionOutcome.PASS, result.outcome)
+        assertTrue(result.selectedContext.joinToString("\n").contains("Alt"))
+        assertTrue(result.selectedContext.joinToString("\n").contains("Alt2"))
+    }
+
+    @Test
+    fun structuralV2FailsWhenOldObservationWinsTheFirstAttractor() = runBlocking {
+        val gateway = FakeGateway(
+            mapOf(
+                "Como se chama meu gato?" to listOf(
+                    "Meu gato se chama Alt.",
+                    "Meu gato se chama Alt2.",
+                ),
+            ),
+        )
+        val scenario = StructuralV2MemoryRegressionCatalog.scenarios
+            .first { it.id == "v2-conflict-cat-recurrence" }
+
+        val result = MemoryRegressionRunner(gateway).run(listOf(scenario)).results.single()
+
+        assertEquals(MemoryRegressionOutcome.FAIL, result.outcome)
+    }
+
+    @Test
     fun restartScenarioIsNeverPretendedWhenNoRestartHookExists() = runBlocking {
         val gateway = FakeGateway(emptyMap())
         val scenario = MemoryRegressionCatalog.scenarios.first { it.requiresRestart }
