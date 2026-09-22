@@ -18,6 +18,8 @@ data class MemoryRegressionScenario(
     val expectedTerms: List<String>,
     val forbiddenTerms: List<String> = emptyList(),
     val requiresRestart: Boolean = false,
+    val expectedStatus: MemoryStatus? = null,
+    val preferredFirstContextTerms: List<String> = emptyList(),
 )
 
 object MemoryRegressionCatalog {
@@ -42,5 +44,112 @@ object MemoryRegressionCatalog {
         MemoryRegressionScenario("context-single-fact", MemoryRegressionCategory.CONTEXT, listOf("Meu gato se chama Alt.", "Meu carro é um Jetta azul.", "Minha bancada tem um osciloscópio."), "Como se chama meu gato?", listOf("Alt"), listOf("Jetta", "osciloscópio")),
         MemoryRegressionScenario("context-latest-correction", MemoryRegressionCategory.CONTEXT, listOf("A fonte é 12 V.", "Correção: para este teste a fonte é 24 V.", "O cabo é vermelho."), "Qual tensão devo usar neste teste?", listOf("24 V"), listOf("12 V", "cabo")),
         MemoryRegressionScenario("context-collection-scope", MemoryRegressionCategory.CONTEXT, listOf("Tenho um gato Alt.", "Tenho um carro Jetta.", "Tenho um osciloscópio de 10 MHz."), "Quais animais mencionei?", listOf("Alt"), listOf("Jetta", "osciloscópio")),
+    )
+}
+
+
+/**
+ * Regression profile for Memoria.ia V2 structural memory.
+ *
+ * Conflicting observations are not deleted by semantic rules. They may coexist;
+ * recurrence/temporal dynamics determine which context becomes the stronger
+ * attractor. These scenarios therefore verify retrieval and ordering without
+ * asserting that older evidence ceased to exist.
+ */
+object StructuralV2MemoryRegressionCatalog {
+    val scenarios: List<MemoryRegressionScenario> = listOf(
+        MemoryRegressionScenario(
+            id = "v2-fact-cat-name",
+            category = MemoryRegressionCategory.FACT,
+            setupTurns = listOf("Meu gato se chama Alt."),
+            query = "Como se chama meu gato?",
+            expectedTerms = listOf("Alt"),
+            expectedStatus = MemoryStatus.HIT,
+            preferredFirstContextTerms = listOf("Alt"),
+        ),
+        MemoryRegressionScenario(
+            id = "v2-conflict-cat-recurrence",
+            category = MemoryRegressionCategory.CORRECTION,
+            setupTurns = listOf(
+                "Meu gato se chama Alt.",
+                "Meu gato se chama Alt2.",
+                "Meu gato se chama Alt2.",
+            ),
+            query = "Como se chama meu gato?",
+            expectedTerms = listOf("Alt", "Alt2"),
+            expectedStatus = MemoryStatus.HIT,
+            preferredFirstContextTerms = listOf("Alt2"),
+        ),
+        MemoryRegressionScenario(
+            id = "v2-conflict-color-recurrence",
+            category = MemoryRegressionCategory.CORRECTION,
+            setupTurns = listOf(
+                "Meu Corsa é branco.",
+                "Meu Corsa é prata.",
+                "Meu Corsa é prata.",
+            ),
+            query = "Qual é a cor do meu Corsa?",
+            expectedTerms = listOf("branco", "prata"),
+            expectedStatus = MemoryStatus.HIT,
+            preferredFirstContextTerms = listOf("prata"),
+        ),
+        MemoryRegressionScenario(
+            id = "v2-collection-cats",
+            category = MemoryRegressionCategory.COLLECTION,
+            setupTurns = listOf(
+                "Tenho um gato chamado Alt.",
+                "Também conheço um gato chamado Nino.",
+            ),
+            query = "Quais gatos eu mencionei?",
+            expectedTerms = listOf("Alt", "Nino"),
+            expectedStatus = MemoryStatus.HIT,
+        ),
+        MemoryRegressionScenario(
+            id = "v2-context-cat-only",
+            category = MemoryRegressionCategory.CONTEXT,
+            setupTurns = listOf(
+                "Meu gato se chama Alt.",
+                "Meu carro é um Jetta azul.",
+                "Minha bancada tem um osciloscópio.",
+            ),
+            query = "Como se chama meu gato?",
+            expectedTerms = listOf("Alt"),
+            forbiddenTerms = listOf("Jetta", "osciloscópio"),
+            expectedStatus = MemoryStatus.HIT,
+            preferredFirstContextTerms = listOf("Alt"),
+        ),
+        MemoryRegressionScenario(
+            id = "v2-unrelated-query",
+            category = MemoryRegressionCategory.CONTAMINATION,
+            setupTurns = listOf("Meu gato se chama Alt."),
+            query = "Qual tensão há na fonte da bancada?",
+            expectedTerms = emptyList(),
+            forbiddenTerms = listOf("Alt"),
+            expectedStatus = MemoryStatus.UNRESOLVED,
+        ),
+        MemoryRegressionScenario(
+            id = "v2-restart-fact",
+            category = MemoryRegressionCategory.RESTART,
+            setupTurns = listOf("Meu gato se chama Alt."),
+            query = "Como se chama meu gato?",
+            expectedTerms = listOf("Alt"),
+            requiresRestart = true,
+            expectedStatus = MemoryStatus.HIT,
+            preferredFirstContextTerms = listOf("Alt"),
+        ),
+        MemoryRegressionScenario(
+            id = "v2-restart-conflict-recurrence",
+            category = MemoryRegressionCategory.RESTART,
+            setupTurns = listOf(
+                "A fonte é 12 V.",
+                "A fonte é 24 V.",
+                "A fonte é 24 V.",
+            ),
+            query = "Qual tensão foi associada à fonte?",
+            expectedTerms = listOf("12 V", "24 V"),
+            requiresRestart = true,
+            expectedStatus = MemoryStatus.HIT,
+            preferredFirstContextTerms = listOf("24 V"),
+        ),
     )
 }
