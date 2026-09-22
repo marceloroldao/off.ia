@@ -297,3 +297,14 @@ fun ServerStructuralResolveResult.toMemoryResolution(): MemoryResolution {
         conversationWindowCount = 0,
     )
 }
+
+
+internal fun selectLaboratoryMemoryResolution(
+    local: MemoryResolution,
+    structural: MemoryResolution?,
+): MemoryResolution =
+    if (structural?.status == MemoryStatus.HIT && structural.contextItems.isNotEmpty()) {
+        structural
+    } else {
+        local
+    }
