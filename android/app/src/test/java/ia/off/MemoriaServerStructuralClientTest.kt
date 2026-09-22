@@ -282,4 +282,99 @@ class MemoriaServerStructuralClientTest {
         )
     }
 
+
+    @Test
+    fun turnGateAlwaysResolvesBeforeObservingCurrentUserText() = runBlocking {
+        val calls = mutableListOf<String>()
+        val client = object : StructuralTextMemoryClient {
+            override suspend fun resolve(
+                query: String,
+                limit: Int,
+                maxScan: Int,
+            ): ServerStructuralResolveResult {
+                calls += "resolve:$query"
+                return ServerStructuralResolveResult(
+                    status = "UNRESOLVED",
+                    contexts = emptyList(),
+                    scannedObservations = 0,
+                    querySymbolCount = 3,
+                    semanticProjection = false,
+                )
+            }
+
+            override suspend fun observeUserText(
+                text: String,
+                sequence: Long,
+                sessionId: String,
+            ): ServerStructuralObserveResult {
+                calls += "observe:$text:$sequence:$sessionId"
+                return ServerStructuralObserveResult(
+                    stored = true,
+                    duplicate = false,
+                    observationId = "obs-current",
+                    symbolCount = 3,
+                    semanticProjection = false,
+                )
+            }
+        }
+
+        val gate = resolveThenObserveUserText(
+            client = client,
+            userText = "Meu gato se chama Alt",
+            sequence = 4,
+            sessionId = "session-1",
+        )
+
+        assertEquals(
+            listOf(
+                "resolve:Meu gato se chama Alt",
+                "observe:Meu gato se chama Alt:4:session-1",
+            ),
+            calls,
+        )
+        assertTrue(gate.observed)
+        assertEquals(MemoryStatus.UNRESOLVED, gate.resolution?.status)
+    }
+
+    @Test
+    fun turnGateStillObservesUserTextWhenResolveFails() = runBlocking {
+        val calls = mutableListOf<String>()
+        val client = object : StructuralTextMemoryClient {
+            override suspend fun resolve(
+                query: String,
+                limit: Int,
+                maxScan: Int,
+            ): ServerStructuralResolveResult {
+                calls += "resolve"
+                error("synthetic resolve failure")
+            }
+
+            override suspend fun observeUserText(
+                text: String,
+                sequence: Long,
+                sessionId: String,
+            ): ServerStructuralObserveResult {
+                calls += "observe"
+                return ServerStructuralObserveResult(
+                    stored = true,
+                    duplicate = false,
+                    observationId = "obs-after-failed-resolve",
+                    symbolCount = 2,
+                    semanticProjection = false,
+                )
+            }
+        }
+
+        val gate = resolveThenObserveUserText(
+            client = client,
+            userText = "Hoje acordei feliz",
+            sequence = 2,
+            sessionId = "session-2",
+        )
+
+        assertEquals(listOf("resolve", "observe"), calls)
+        assertEquals(null, gate.resolution)
+        assertTrue(gate.observed)
+    }
+
 }
