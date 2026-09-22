@@ -168,11 +168,11 @@ internal class HttpMemoriaDeviceAuthTransport : MemoriaDeviceAuthTransport {
 }
 
 class MemoriaDeviceEnrollmentClient internal constructor(
-    private val identityStore: MemoriaDeviceIdentityStore,
+    private val identityStore: MemoriaDeviceIdentityProvider,
     private val transport: MemoriaDeviceAuthTransport,
 ) {
     constructor(
-        identityStore: MemoriaDeviceIdentityStore,
+        identityStore: MemoriaDeviceIdentityProvider,
     ) : this(identityStore, HttpMemoriaDeviceAuthTransport())
 
     suspend fun claim(
@@ -204,12 +204,12 @@ class MemoriaDeviceEnrollmentClient internal constructor(
 }
 
 class MemoriaDeviceTokenProvider internal constructor(
-    private val identityStore: MemoriaDeviceIdentityStore,
+    private val identityStore: MemoriaDeviceIdentityProvider,
     private val transport: MemoriaDeviceAuthTransport,
     private val clockMillis: () -> Long,
 ) : DeviceTokenProvider {
     constructor(
-        identityStore: MemoriaDeviceIdentityStore,
+        identityStore: MemoriaDeviceIdentityProvider,
     ) : this(identityStore, HttpMemoriaDeviceAuthTransport(), System::currentTimeMillis)
 
     private val mutex = Mutex()
