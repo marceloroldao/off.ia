@@ -30,14 +30,15 @@ Memoria.ia BDR   llama.cpp/JNI
 
 For Memoria mode:
 
-1. `resolve(userText)` before inference.
-2. Assemble only Memoria-selected context.
+1. Run semantic `resolve(userText)` and read-only structural resolve before inference.
+2. Assemble only context selected by Memoria.ia; OFF.IA does not rescore structural evidence.
 3. Generate response locally.
-4. `learnTurn(userText, assistantText)` immediately after successful generation.
-5. Persist/flush through the Memoria/BDR contract.
-6. Update the UI and metrics.
+4. `learnTurn(userText, assistantText)` after successful generation for the existing conversation/state contract.
+5. Explicitly observe only the persisted USER text in the structural trail, using the returned user memory ID as provenance.
+6. Persist/flush through the shared Memoria/BDR contract.
+7. Update the UI and metrics.
 
-A failed inference must not create a fabricated assistant memory. The user message may later be represented as an event by Memoria.ia if its own contract supports that behavior.
+A failed inference must not create a fabricated assistant memory. Assistant/LLM output is never implicitly inserted into the structural trail, and the current query is resolved before it is observed so it cannot reinforce its own answer.
 
 Baseline mode bypasses memory resolve/learn so experiments remain uncontaminated.
 
