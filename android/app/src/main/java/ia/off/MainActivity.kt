@@ -751,17 +751,20 @@ fun OffiaChatScreen() {
                                 status = "Offline • consultando memória local…"
                                 try {
                                     val localResolution = memory.resolve(text, sessionIdForResolve, trajectoryWindow)
-                                    var structuralResolutionStatus: MemoryStatus? = null
-                                    val structuralResolution = if (structuralClient != null) {
-                                        status = "Híbrido • consultando memória estrutural V2…"
-                                        runCatching {
-                                            structuralClient.resolve(text).toMemoryResolution()
-                                        }.getOrNull().also {
-                                            structuralResolutionStatus = it?.status
-                                        }
+                                    val structuralTurn = if (structuralClient != null) {
+                                        status = "Híbrido • resolvendo e registrando texto do usuário na memória estrutural V2…"
+                                        resolveThenObserveUserText(
+                                            client = structuralClient,
+                                            userText = text,
+                                            sequence = structuralSequence,
+                                            sessionId = sessionIdForResolve,
+                                        )
                                     } else {
-                                        null
+                                        StructuralTurnGateResult(null, false)
                                     }
+                                    val structuralResolution = structuralTurn.resolution
+                                    val structuralResolutionStatus = structuralResolution?.status
+                                    val structuralObserved = structuralTurn.observed
                                     val resolution = selectLaboratoryMemoryResolution(
                                         local = localResolution,
                                         structural = structuralResolution,
@@ -771,25 +774,6 @@ fun OffiaChatScreen() {
                                     lastMemoryIds = resolution.memoryIds
                                     lastTrajectoryUsed = resolution.trajectoryUsed
                                     lastWindowCount = resolution.conversationWindowCount
-
-                                    // Crash-safe structural ordering:
-                                    // 1) resolve against past observations;
-                                    // 2) only after resolve completes, observe the current USER text;
-                                    // 3) then generate. The current query cannot reinforce its own
-                                    //    lookup, and a crash during model generation does not lose
-                                    //    the user's already-accepted structural observation.
-                                    val structuralObserved = if (structuralClient != null) {
-                                        status = "Híbrido • registrando texto do usuário na memória estrutural V2…"
-                                        runCatching {
-                                            structuralClient.observeUserText(
-                                                text = text,
-                                                sequence = structuralSequence,
-                                                sessionId = sessionIdForResolve,
-                                            )
-                                        }.isSuccess
-                                    } else {
-                                        false
-                                    }
 
                                     val responseMemory = ResponseMemoryMetadata(
                                         status = resolution.status,
