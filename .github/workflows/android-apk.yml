@@ -96,6 +96,8 @@ jobs:
           test "$(git -C android/vendor/memoria.ia rev-parse HEAD)" = "bd33b9cfcfa78f0e3850fb5e298cbf4cbdc360b9"
           grep -q 'version = "1.0.0rc7"' android/vendor/memoria.ia/pyproject.toml
           grep -q '#define MEMORIA_MOBILE_ABI_VERSION 1' android/vendor/memoria.ia/include/memoria_mobile.h
+          grep -q 'memoria_mobile_observe_structural_text_json' android/vendor/memoria.ia/include/memoria_mobile.h
+          grep -q 'memoria_mobile_resolve_structural_text_json' android/vendor/memoria.ia/include/memoria_mobile.h
           test "$(git -C android/vendor/resolutive-DB rev-parse HEAD)" = "d09914b85646353d8fd004ccf99e96a94fab9eef"
           grep -Fq 'buildConfigField("String", "MEMORIA_IA_VERSION", "\"v2-dev-structural\"")' android/app/build.gradle.kts
           grep -Fq 'buildConfigField("String", "MEMORIA_IA_COMMIT", "\"bd33b9cfcfa78f0e3850fb5e298cbf4cbdc360b9\"")' android/app/build.gradle.kts
