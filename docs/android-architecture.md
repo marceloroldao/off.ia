@@ -30,12 +30,15 @@ Memoria.ia BDR   llama.cpp/JNI
 
 For Memoria mode:
 
-1. `resolve(userText)` before inference.
+1. `resolve(userText)` before inference. Structural V2 resolution is read-only.
 2. Assemble only Memoria-selected context.
-3. Generate response locally.
-4. `learnTurn(userText, assistantText)` immediately after successful generation.
-5. Persist/flush through the Memoria/BDR contract.
-6. Update the UI and metrics.
+3. Generate response locally with llama.cpp.
+4. `observeUser(userText, sessionId, sourceId, sequence)` records only the user's observation in the structural V2 trail.
+5. The generated assistant text is not inserted into that factual/observational trail.
+6. Persist/flush through the shared Memoria.ia/BDR contract.
+7. Update the UI and metrics.
+
+The legacy `learnTurn(userText, assistantText)` boundary remains only for migration/tests and old memory fallback; it is not the primary V2 learning path.
 
 A failed inference must not create a fabricated assistant memory. The user message may later be represented as an event by Memoria.ia if its own contract supports that behavior.
 
