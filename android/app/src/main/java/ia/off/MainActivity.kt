@@ -168,6 +168,8 @@ fun OffiaChatScreen() {
     val scope = rememberCoroutineScope()
     val prefs = remember { appContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE) }
     val settingsStore = remember { AppSettingsStore(appContext) }
+    val structuralIdentity = remember { MemoriaDeviceIdentityStore(appContext) }
+    val structuralTokenProvider = remember { MemoriaDeviceTokenProvider(structuralIdentity) }
     val modelManager = remember { ModelManager(appContext) }
     val modelDownloader = remember { HttpModelDownloadProvider(appContext) }
     val curiosityProvider: CuriosityProvider = remember { WikipediaCuriosityProvider() }
@@ -706,6 +708,15 @@ fun OffiaChatScreen() {
 
                             val text = input.trim()
                             val sessionIdForResolve = activeSessionId
+                            val structuralSequence = messages.count { it.role == "Você" }.toLong()
+                            val structuralBinding = if (settingsStore.load().laboratoryMode) {
+                                runCatching { structuralIdentity.loadBinding() }.getOrNull()
+                            } else {
+                                null
+                            }
+                            val structuralClient = structuralBinding?.let {
+                                MemoriaServerStructuralClient(it.serverBaseUrl, structuralTokenProvider)
+                            }
                             val trajectoryWindow = messages
                                 .asSequence()
                                 .filter { it.text.isNotBlank() && it.text != "…" }
@@ -735,7 +746,20 @@ fun OffiaChatScreen() {
                                 saveWorkspace()
                                 status = "Offline • consultando memória local…"
                                 try {
-                                    val resolution = memory.resolve(text, sessionIdForResolve, trajectoryWindow)
+                                    val localResolution = memory.resolve(text, sessionIdForResolve, trajectoryWindow)
+                                    var resolution = localResolution
+                                    var structuralResolutionStatus: MemoryStatus? = null
+                                    if (structuralClient != null) {
+                                        status = "Híbrido • consultando memória estrutural V2…"
+                                        val structuralResolution = runCatching {
+                                            structuralClient.resolve(text).toMemoryResolution()
+                                        }.getOrNull()
+                                        structuralResolutionStatus = structuralResolution?.status
+                                        if (structuralResolution?.status == MemoryStatus.HIT) {
+                                            resolution = structuralResolution
+                                        }
+                                    }
+
                                     lastMemoryStatus = resolution.status
                                     lastMemoryIds = resolution.memoryIds
                                     lastTrajectoryUsed = resolution.trajectoryUsed
@@ -766,23 +790,48 @@ fun OffiaChatScreen() {
                                         generation = messages[responseIndex].generation?.copy(latencyMs = generationLatency),
                                     )
 
+                                    var structuralObserved = false
                                     if (answer.isEmpty()) {
                                         messages[responseIndex] = messages[responseIndex].copy(text = "O modelo não gerou resposta.")
-                                    } else if (memory.available) {
-                                        status = "Offline • aprendendo turno…"
-                                        val learned = memory.learnTurn(text, answer.toString())
-                                        memory.flush()
-                                        if (learned.memoryIds.isNotEmpty()) {
-                                            val currentMemory = messages[responseIndex].memory
-                                            if (currentMemory != null) {
-                                                messages[responseIndex] = messages[responseIndex].copy(
-                                                    memory = currentMemory.copy(learnedMemoryIds = learned.memoryIds.distinct()),
-                                                )
+                                    } else {
+                                        if (memory.available) {
+                                            status = "Offline • aprendendo turno…"
+                                            val learned = memory.learnTurn(text, answer.toString())
+                                            memory.flush()
+                                            if (learned.memoryIds.isNotEmpty()) {
+                                                val currentMemory = messages[responseIndex].memory
+                                                if (currentMemory != null) {
+                                                    messages[responseIndex] = messages[responseIndex].copy(
+                                                        memory = currentMemory.copy(learnedMemoryIds = learned.memoryIds.distinct()),
+                                                    )
+                                                }
                                             }
+                                        }
+
+                                        // Structural V2 ordering invariant:
+                                        // resolve against the past first, then observe only the
+                                        // user's completed turn. Assistant/LLM text never enters
+                                        // this structural trail.
+                                        if (structuralClient != null) {
+                                            status = "Híbrido • registrando texto do usuário na memória estrutural V2…"
+                                            structuralObserved = runCatching {
+                                                structuralClient.observeUserText(
+                                                    text = text,
+                                                    sequence = structuralSequence,
+                                                    sessionId = sessionIdForResolve,
+                                                )
+                                            }.isSuccess
                                         }
                                     }
                                     saveWorkspace()
-                                    status = "Offline • ${modelName ?: "GGUF"} pronto"
+                                    status = when {
+                                        structuralClient != null && structuralObserved ->
+                                            "Híbrido • ${modelName ?: "GGUF"} • estrutural V2 sincronizada"
+                                        structuralClient != null && structuralResolutionStatus == MemoryStatus.HIT ->
+                                            "Híbrido • ${modelName ?: "GGUF"} • estrutural V2 HIT • sync pendente"
+                                        else ->
+                                            "Offline • ${modelName ?: "GGUF"} pronto"
+                                    }
                                 } catch (_: CancellationException) {
                                     if (messages[responseIndex].text == "…") {
                                         messages[responseIndex] = messages[responseIndex].copy(text = "Geração interrompida.")
