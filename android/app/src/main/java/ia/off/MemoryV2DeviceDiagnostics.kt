@@ -36,6 +36,7 @@ suspend fun runStructuralV2DeviceDiagnostics(context: Context): MemoryRegression
                 current = NativeMemoryGateway(
                     context = appContext,
                     storageRoot = V2_DIAGNOSTIC_STORAGE_ROOT,
+                    legacyFallbackEnabled = false,
                 )
                 current
             },
