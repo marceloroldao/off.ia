@@ -77,6 +77,74 @@ class NativeMemoryGateway(context: Context) : MemoryGateway, AutoCloseable {
             MemoryLearnResult(memoryIds = parseIds(json.optJSONArray("memory_ids")))
         }
 
+    override suspend fun resolveStructuralText(
+        query: String,
+        hierarchyId: String,
+        topK: Int,
+    ): StructuralMemoryResolution = withContext(Dispatchers.IO) {
+        require(query.isNotBlank()) { "Consulta estrutural vazia" }
+        require(hierarchyId.isNotBlank()) { "hierarchyId estrutural vazio" }
+        require(topK in 1..16) { "topK estrutural deve estar entre 1 e 16" }
+        val request = JSONObject().apply {
+            put("hierarchy_id", hierarchyId)
+            put("query", query)
+            put("top_k", topK)
+        }
+        val json = JSONObject(nativeResolveStructural(requireHandle(), request.toString()))
+        val status = when (json.optString("status")) {
+            "HIT" -> MemoryStatus.HIT
+            "UNRESOLVED" -> MemoryStatus.UNRESOLVED
+            else -> MemoryStatus.UNAVAILABLE
+        }
+        val contexts = buildList {
+            val rows = json.optJSONArray("contexts") ?: JSONArray()
+            for (i in 0 until rows.length()) {
+                val row = rows.optJSONObject(i) ?: continue
+                val sourceText = row.optString("source_text")
+                if (sourceText.isBlank()) continue
+                add(
+                    StructuralMemoryContext(
+                        sourceText = sourceText,
+                        sourceIds = parseIds(row.optJSONArray("source_ids")),
+                        score = row.optDouble("score", 0.0),
+                        exactOverlap = row.optInt("exact_overlap", 0),
+                        associationMass = row.optDouble("association_mass", 0.0),
+                        repetitions = row.optInt("repetitions", 1),
+                    ),
+                )
+            }
+        }
+        StructuralMemoryResolution(status = status, contexts = contexts)
+    }
+
+    override suspend fun observeStructuralText(
+        text: String,
+        hierarchyId: String,
+        sourceId: String,
+        sequence: Long,
+        sourceKind: String,
+    ): StructuralMemoryObservation = withContext(Dispatchers.IO) {
+        require(text.isNotBlank()) { "Observação estrutural vazia" }
+        require(hierarchyId.isNotBlank()) { "hierarchyId estrutural vazio" }
+        require(sourceId.isNotBlank()) { "sourceId estrutural vazio" }
+        require(sequence >= 0) { "sequence estrutural deve ser >= 0" }
+        val request = JSONObject().apply {
+            put("hierarchy_id", hierarchyId)
+            put("source_id", sourceId)
+            put("source_kind", sourceKind.ifBlank { "unknown" })
+            put("sequence", sequence)
+            put("text", text)
+        }
+        val json = JSONObject(nativeObserveStructural(requireHandle(), request.toString()))
+        check(json.optString("status") == "OK") { "Memoria.ia rejeitou observação estrutural" }
+        StructuralMemoryObservation(
+            duplicate = json.optBoolean("duplicate", false),
+            observationCount = json.optInt("observation_count", 0),
+            hierarchyCount = json.optInt("hierarchy_count", 0),
+            edgeCount = json.optInt("edge_count", 0),
+        )
+    }
+
     override suspend fun learnExternalKnowledge(source: ExternalKnowledgeSource): ExternalKnowledgeLearnResult =
         withContext(Dispatchers.IO) {
             require(source.content.isNotBlank()) { "Conhecimento público vazio" }
@@ -168,6 +236,8 @@ class NativeMemoryGateway(context: Context) : MemoryGateway, AutoCloseable {
     private external fun nativeOpen(path: String): Long
     private external fun nativeClose(handle: Long)
     private external fun nativeResolve(handle: Long, requestJson: String): String
+    private external fun nativeResolveStructural(handle: Long, requestJson: String): String
+    private external fun nativeObserveStructural(handle: Long, requestJson: String): String
     private external fun nativeLearn(handle: Long, user: String, assistant: String): String
     private external fun nativeLearnExternal(handle: Long, requestJson: String): String
     private external fun nativeExport(handle: Long, requestJson: String): String
