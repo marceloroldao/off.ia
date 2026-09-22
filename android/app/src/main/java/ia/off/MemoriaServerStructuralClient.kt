@@ -266,3 +266,34 @@ class MemoriaServerStructuralClient internal constructor(
             require(it.isNotBlank()) { "Device token indisponível" }
         }
 }
+
+
+fun ServerStructuralResolveResult.toMemoryResolution(): MemoryResolution {
+    val mappedStatus = when (status.uppercase()) {
+        "HIT" -> MemoryStatus.HIT
+        "MISS" -> MemoryStatus.MISS
+        "UNRESOLVED" -> MemoryStatus.UNRESOLVED
+        else -> MemoryStatus.UNRESOLVED
+    }
+    val selectedContexts = contexts
+        .map { it.sourceText.trim() }
+        .filter { it.isNotBlank() }
+        .distinct()
+    val ids = contexts
+        .flatMap { it.observationIds }
+        .filter { it.isNotBlank() }
+        .distinct()
+    val confidence = contexts.maxOfOrNull { it.score }
+    return MemoryResolution(
+        status = if (mappedStatus == MemoryStatus.HIT && selectedContexts.isEmpty()) {
+            MemoryStatus.UNRESOLVED
+        } else {
+            mappedStatus
+        },
+        contextItems = selectedContexts,
+        memoryIds = ids,
+        confidence = confidence,
+        trajectoryUsed = false,
+        conversationWindowCount = 0,
+    )
+}
