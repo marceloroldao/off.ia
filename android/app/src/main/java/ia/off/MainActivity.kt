@@ -709,7 +709,11 @@ fun OffiaChatScreen() {
                             val text = input.trim()
                             val sessionIdForResolve = activeSessionId
                             val structuralSequence = messages.count { it.role == "Você" }.toLong()
-                            val structuralBinding = if (settingsStore.load().laboratoryMode) {
+                            val runtimeSettings = settingsStore.load()
+                            val structuralBinding = if (
+                                runtimeSettings.laboratoryMode &&
+                                !runtimeSettings.blockNetworkAfterModelDownload
+                            ) {
                                 runCatching { structuralIdentity.loadBinding() }.getOrNull()
                             } else {
                                 null
