@@ -35,4 +35,29 @@ class MemoryRegressionScenarioTest {
         assertTrue(corrections.isNotEmpty())
         assertTrue(corrections.all { it.expectedTerms.isNotEmpty() && it.forbiddenTerms.isNotEmpty() })
     }
+
+    @Test
+    fun structuralV2CatalogKeepsConflictingEvidenceInsteadOfDeletingIt() {
+        val scenarios = StructuralV2MemoryRegressionCatalog.scenarios
+        assertTrue(scenarios.isNotEmpty())
+        assertEquals(scenarios.size, scenarios.map { it.id }.toSet().size)
+
+        val conflict = scenarios.first { it.id == "v2-conflict-cat-recurrence" }
+        assertTrue(conflict.expectedTerms.containsAll(listOf("Alt", "Alt2")))
+        assertTrue(conflict.forbiddenTerms.isEmpty())
+        assertEquals(listOf("Alt2"), conflict.preferredFirstContextTerms)
+        assertEquals(MemoryStatus.HIT, conflict.expectedStatus)
+    }
+
+    @Test
+    fun structuralV2CatalogCoversRestartAndUnrelatedQuery() {
+        val scenarios = StructuralV2MemoryRegressionCatalog.scenarios
+        assertTrue(scenarios.any { it.requiresRestart })
+        assertTrue(
+            scenarios.any {
+                it.expectedStatus == MemoryStatus.UNRESOLVED &&
+                    it.category == MemoryRegressionCategory.CONTAMINATION
+            },
+        )
+    }
 }

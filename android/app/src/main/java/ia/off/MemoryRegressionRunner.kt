@@ -82,11 +82,17 @@ class MemoryRegressionRunner(private val gateway: MemoryGateway) {
         latencyMs: Long,
     ): MemoryRegressionResult {
         val searchable = resolution.contextItems.joinToString("\n")
+        val firstContext = resolution.contextItems.firstOrNull().orEmpty()
         val missing = scenario.expectedTerms.filterNot { searchable.contains(it, ignoreCase = true) }
+        val missingPreferred = scenario.preferredFirstContextTerms.filterNot {
+            firstContext.contains(it, ignoreCase = true)
+        }
         val forbidden = scenario.forbiddenTerms.filter { searchable.contains(it, ignoreCase = true) }
+        val wrongStatus = scenario.expectedStatus?.let { resolution.status != it } ?: false
         val outcome = when {
             resolution.status == MemoryStatus.UNAVAILABLE -> MemoryRegressionOutcome.UNAVAILABLE
-            missing.isEmpty() && forbidden.isEmpty() -> MemoryRegressionOutcome.PASS
+            !wrongStatus && missing.isEmpty() && missingPreferred.isEmpty() && forbidden.isEmpty() ->
+                MemoryRegressionOutcome.PASS
             else -> MemoryRegressionOutcome.FAIL
         }
         return MemoryRegressionResult(scenario, outcome, resolution.status, resolution.contextItems, missing, forbidden, latencyMs)

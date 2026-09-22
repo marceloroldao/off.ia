@@ -112,6 +112,29 @@ jobs:
           grep -Fq 'Text("KV-cache: ${BuildConfig.KV_CACHE_TYPE}"' android/app/src/main/java/ia/off/SettingsPanel.kt
           grep -Fq 'Text("Copiar diagnóstico completo")' android/app/src/main/java/ia/off/SettingsPanel.kt
 
+      - name: Build Memoria.ia V2 host runtime
+        shell: bash
+        run: |
+          cmake -S android/vendor/memoria.ia/native/mobile \
+            -B android/build/memoria-v2-host \
+            -DMEMORIA_BDR_ROOT="$GITHUB_WORKSPACE/android/vendor/resolutive-DB"
+          cmake --build android/build/memoria-v2-host --target memoria_mobile --parallel 2
+
+      - name: Compile OFF.IA structural V2 native gate
+        shell: bash
+        run: |
+          cc -std=c11 \
+            -Iandroid/vendor/memoria.ia/include \
+            android/app/src/main/cpp/tests/offia_structural_v2_host.c \
+            -Landroid/build/memoria-v2-host \
+            -lmemoria_mobile \
+            -Wl,-rpath,"$GITHUB_WORKSPACE/android/build/memoria-v2-host" \
+            -o android/build/offia-structural-v2-host
+
+      - name: Run OFF.IA structural V2 native gate
+        shell: bash
+        run: android/build/offia-structural-v2-host
+
       - name: Set up JDK 17
         uses: actions/setup-java@v5
         with:
