@@ -377,11 +377,7 @@ fun OffiaChatScreen() {
             return@LaunchedEffect
         }
 
-        if (settingsStore.load().autoDownloadDefaultModel) {
-            startDefaultModelDownload()
-        } else {
-            status = "Sem modelo • baixe o modelo padrão ou importe um GGUF"
-        }
+        status = "Offline • Memoria.ia pronta • modelo opcional para Curiosidade"
     }
 
     val modelPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
