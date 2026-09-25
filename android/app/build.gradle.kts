@@ -26,11 +26,11 @@ android {
         applicationId = "ia.off"
         minSdk = 33
         targetSdk = 36
-        versionCode = 9
-        versionName = "0.1.0-alpha.9-memory-language-test"
+        versionCode = 10
+        versionName = "0.1.0-alpha.10-structural-collection-test"
         buildConfigField("String", "OFFIA_COMMIT", "\"$offiaBuildCommit\"")
-        buildConfigField("String", "MEMORIA_IA_VERSION", "\"v2-post-rc2-window-group-opt-in\"")
-        buildConfigField("String", "MEMORIA_IA_COMMIT", "\"4bf16288b809f6b96fa57d0d88d71e57b061a28d\"")
+        buildConfigField("String", "MEMORIA_IA_VERSION", "\"v2-post-rc2-collection-surface\"")
+        buildConfigField("String", "MEMORIA_IA_COMMIT", "\"3a70e7179a34b11cfb3812d594036330640a3819\"")
         buildConfigField("String", "BDR_VERSION", "\"v1.2.0-rc4\"")
         buildConfigField("String", "BDR_COMMIT", "\"317882a00f041fc1568ff986af8016b09453f21a\"")
         buildConfigField("String", "LLAMA_CPP_COMMIT", "\"ca3d5a3e10d53f7ea672cb9b6178faca3e2807bc\"")
