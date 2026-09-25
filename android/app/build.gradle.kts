@@ -4,7 +4,7 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
-val offiaBuildCommit = providers.environmentVariable("GITHUB_SHA").orElse("desconhecida").get()
+val offiaBuildCommit = providers.environmentVariable("GITHUB_SHA").orElse("v1.2.0-rc4").get()
 
 android {
     namespace = "ia.off"
@@ -29,10 +29,10 @@ android {
         versionCode = 8
         versionName = "0.1.0-alpha.8"
         buildConfigField("String", "OFFIA_COMMIT", "\"$offiaBuildCommit\"")
-        buildConfigField("String", "MEMORIA_IA_VERSION", "\"v2-dev-structural\"")
-        buildConfigField("String", "MEMORIA_IA_COMMIT", "\"bd33b9cfcfa78f0e3850fb5e298cbf4cbdc360b9\"")
-        buildConfigField("String", "BDR_VERSION", "\"desconhecida\"")
-        buildConfigField("String", "BDR_COMMIT", "\"d09914b85646353d8fd004ccf99e96a94fab9eef\"")
+        buildConfigField("String", "MEMORIA_IA_VERSION", "\"v2.0.0-rc2\"")
+        buildConfigField("String", "MEMORIA_IA_COMMIT", "\"e38f27b639bec1cfcb83694c1418a4d01f250ffd\"")
+        buildConfigField("String", "BDR_VERSION", "\"v1.2.0-rc4\"")
+        buildConfigField("String", "BDR_COMMIT", "\"317882a00f041fc1568ff986af8016b09453f21a\"")
         buildConfigField("String", "LLAMA_CPP_COMMIT", "\"ca3d5a3e10d53f7ea672cb9b6178faca3e2807bc\"")
         buildConfigField("String", "KV_CACHE_TYPE", "\"Q8_0\"")
         buildConfigField("String", "MEMORIA_MOBILE_ABI", "\"v1\"")
