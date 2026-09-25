@@ -99,7 +99,11 @@ class NativeMemoryGateway(
             )
         }
 
-        if (!legacyFallbackEnabled) {
+        // The pre-structural store has no durable conversation identity. A
+        // global fallback can retrieve old questions from an unrelated chat
+        // and present them as evidence for this session. Keep it accessible
+        // only to explicit sessionless migration callers.
+        if (!shouldConsultLegacyMemory(legacyFallbackEnabled, sessionId)) {
             return@withContext MemoryResolution(
                 status = MemoryStatus.UNRESOLVED,
                 contextItems = emptyList(),
