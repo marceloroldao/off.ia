@@ -26,11 +26,11 @@ android {
         applicationId = "ia.off"
         minSdk = 33
         targetSdk = 36
-        versionCode = 10
-        versionName = "0.1.0-alpha.10-structural-collection-test"
+        versionCode = 11
+        versionName = "0.1.0-alpha.11-v2-export-test"
         buildConfigField("String", "OFFIA_COMMIT", "\"$offiaBuildCommit\"")
-        buildConfigField("String", "MEMORIA_IA_VERSION", "\"v2-post-rc2-collection-surface\"")
-        buildConfigField("String", "MEMORIA_IA_COMMIT", "\"3a70e7179a34b11cfb3812d594036330640a3819\"")
+        buildConfigField("String", "MEMORIA_IA_VERSION", "\"v2-post-rc2-structural-export\"")
+        buildConfigField("String", "MEMORIA_IA_COMMIT", "\"557b84f5bc73637db9e9289f6b9c3b25f483e0a8\"")
         buildConfigField("String", "BDR_VERSION", "\"v1.2.0-rc4\"")
         buildConfigField("String", "BDR_COMMIT", "\"317882a00f041fc1568ff986af8016b09453f21a\"")
         buildConfigField("String", "LLAMA_CPP_COMMIT", "\"ca3d5a3e10d53f7ea672cb9b6178faca3e2807bc\"")
@@ -91,4 +91,5 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     debugImplementation("androidx.compose.ui:ui-tooling")
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
 }

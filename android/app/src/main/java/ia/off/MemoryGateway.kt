@@ -94,6 +94,9 @@ interface MemoryGateway {
         limit: Int = 64,
     ): String?
 
+    /** Read-only page of V2 observations; retains each source and conversation. */
+    suspend fun exportStructuralPage(offset: Int, limit: Int = 64): String? = null
+
     suspend fun flush()
 }
 

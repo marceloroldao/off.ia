@@ -229,6 +229,16 @@ class NativeMemoryGateway(
         nativeExport(requireHandle(), request.toString())
     }
 
+    override suspend fun exportStructuralPage(offset: Int, limit: Int): String =
+        withContext(Dispatchers.IO) {
+            require(offset >= 0 && limit in 1..64) { "Página estrutural inválida" }
+            val request = JSONObject().apply {
+                put("offset", offset)
+                put("limit", limit)
+            }
+            nativeExportStructural(requireHandle(), request.toString())
+        }
+
     override suspend fun flush() = withContext(Dispatchers.IO) {
         nativeFlush(requireHandle())
     }
@@ -265,5 +275,6 @@ class NativeMemoryGateway(
     private external fun nativeLearn(handle: Long, user: String, assistant: String): String
     private external fun nativeLearnExternal(handle: Long, requestJson: String): String
     private external fun nativeExport(handle: Long, requestJson: String): String
+    private external fun nativeExportStructural(handle: Long, requestJson: String): String
     private external fun nativeFlush(handle: Long)
 }
