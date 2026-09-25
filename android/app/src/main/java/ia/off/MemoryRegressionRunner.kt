@@ -41,8 +41,9 @@ class MemoryRegressionRunner(private val gateway: MemoryGateway) {
         }
 
         val results = mutableListOf<MemoryRegressionResult>()
+        var currentGateway = gateway
         for (scenario in scenarios) {
-            var activeGateway = gateway
+            var activeGateway = currentGateway
             val sessionId = "memory-regression:${scenario.id}"
             scenario.setupTurns.forEachIndexed { index, turn ->
                 activeGateway.observeUser(
@@ -60,7 +61,8 @@ class MemoryRegressionRunner(private val gateway: MemoryGateway) {
                     results += restartRequired(scenario)
                     continue
                 }
-                activeGateway = factory()
+                currentGateway = factory()
+                activeGateway = currentGateway
                 if (!activeGateway.available) {
                     results += unavailable(scenario)
                     continue

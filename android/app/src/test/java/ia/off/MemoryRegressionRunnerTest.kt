@@ -80,10 +80,104 @@ class MemoryRegressionRunnerTest {
     }
 
     @Test
+    fun reopenedGatewayRemainsActiveForScenariosAfterRestart() = runBlocking {
+        val answers = mapOf(
+            "Q1" to listOf("R1"),
+            "Q2" to listOf("R2"),
+        )
+        var current = RestartAwareGateway(answers)
+        val first = MemoryRegressionScenario(
+            id = "restart-first",
+            category = MemoryRegressionCategory.RESTART,
+            setupTurns = listOf("setup-1"),
+            query = "Q1",
+            expectedTerms = listOf("R1"),
+            requiresRestart = true,
+            expectedStatus = MemoryStatus.HIT,
+        )
+        val second = MemoryRegressionScenario(
+            id = "after-restart",
+            category = MemoryRegressionCategory.FACT,
+            setupTurns = listOf("setup-2"),
+            query = "Q2",
+            expectedTerms = listOf("R2"),
+            expectedStatus = MemoryStatus.HIT,
+        )
+
+        val report = MemoryRegressionRunner(current).run(
+            scenarios = listOf(first, second),
+            restartGateway = {
+                current.invalidate()
+                current = RestartAwareGateway(answers)
+                current
+            },
+        )
+
+        assertEquals(2, report.passed)
+        assertEquals(listOf("setup-2"), current.observed)
+    }
+
+    @Test
     fun unavailableGatewayMarksWholeRunUnavailable() = runBlocking {
         val report = MemoryRegressionRunner(UnavailableMemoryGateway).run(MemoryRegressionCatalog.scenarios.take(2))
         assertEquals(2, report.unavailable)
         assertTrue(report.results.all { it.outcome == MemoryRegressionOutcome.UNAVAILABLE })
+    }
+
+    private class RestartAwareGateway(
+        private val answers: Map<String, List<String>>,
+    ) : MemoryGateway {
+        private var valid = true
+        val observed = mutableListOf<String>()
+
+        override val available: Boolean
+            get() = valid
+
+        fun invalidate() {
+            valid = false
+        }
+
+        override suspend fun resolve(
+            message: String,
+            sessionId: String?,
+            conversationWindow: List<MemoryWindowTurn>,
+        ): MemoryResolution {
+            check(valid) { "gateway fechado" }
+            return MemoryResolution(
+                status = MemoryStatus.HIT,
+                contextItems = answers[message].orEmpty(),
+            )
+        }
+
+        override suspend fun observeUser(
+            text: String,
+            sessionId: String?,
+            sourceId: String,
+            sequence: Long,
+        ): MemoryLearnResult {
+            check(valid) { "gateway fechado" }
+            observed += text
+            return MemoryLearnResult()
+        }
+
+        override suspend fun learnTurn(
+            userText: String,
+            assistantText: String,
+        ): MemoryLearnResult = error("legacy path should not be used")
+
+        override suspend fun learnExternalKnowledge(
+            source: ExternalKnowledgeSource,
+        ) = ExternalKnowledgeLearnResult()
+
+        override suspend fun exportSnapshotPage(
+            turnOffset: Int,
+            episodeOffset: Int,
+            limit: Int,
+        ): String? = null
+
+        override suspend fun flush() {
+            check(valid) { "gateway fechado" }
+        }
     }
 
     private class FakeGateway(private val answers: Map<String, List<String>>) : MemoryGateway {
