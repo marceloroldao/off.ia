@@ -215,7 +215,7 @@ class MemoriaServerStructuralClientTest {
             memory.contextItems,
         )
         assertEquals(listOf("obs-1", "obs-2"), memory.memoryIds)
-        assertEquals(1.2, memory.confidence ?: 0.0, 0.000001)
+        assertEquals(null, memory.confidence)
         assertFalse(memory.trajectoryUsed)
     }
 
