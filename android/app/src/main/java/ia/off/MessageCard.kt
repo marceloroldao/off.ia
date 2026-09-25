@@ -157,6 +157,7 @@ fun MessageCard(
                         }
                         "OFF.IA · Melhorada · $provider"
                     }
+                    isLocal && message.generation?.modelName == null -> "OFF.IA · Memoria.ia"
                     else -> "OFF.IA"
                 },
                 style = MaterialTheme.typography.labelMedium,
@@ -216,7 +217,7 @@ fun MessageCard(
                             expanded = moreExpanded,
                             onDismissRequest = { moreExpanded = false },
                         ) {
-                            if (isLocal) {
+                            if (isLocal && onImprove != null) {
                                 DropdownMenuItem(
                                     enabled = !busy && !improving,
                                     text = { Text(if (improving) "Melhorando via M2A2…" else "Melhorar via M2A2") },
@@ -225,6 +226,8 @@ fun MessageCard(
                                         requestImprove()
                                     },
                                 )
+                            }
+                            if (isLocal && onRegenerate != null) {
                                 DropdownMenuItem(
                                     enabled = onRegenerate != null && !busy,
                                     text = { Text("Regenerar localmente") },

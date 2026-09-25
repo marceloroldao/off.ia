@@ -26,8 +26,8 @@ android {
         applicationId = "ia.off"
         minSdk = 33
         targetSdk = 36
-        versionCode = 8
-        versionName = "0.1.0-alpha.8-v2-context-test"
+        versionCode = 9
+        versionName = "0.1.0-alpha.9-memory-language-test"
         buildConfigField("String", "OFFIA_COMMIT", "\"$offiaBuildCommit\"")
         buildConfigField("String", "MEMORIA_IA_VERSION", "\"v2-post-rc2-window-group-opt-in\"")
         buildConfigField("String", "MEMORIA_IA_COMMIT", "\"4bf16288b809f6b96fa57d0d88d71e57b061a28d\"")
