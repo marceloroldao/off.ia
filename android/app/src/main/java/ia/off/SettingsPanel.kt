@@ -295,14 +295,8 @@ fun SettingsPanel(
 
             SettingsSection("Modelos e rede") {
                 SettingsSwitch(
-                    title = "Baixar modelo padrão automaticamente",
-                    subtitle = "Para Curiosidade, OFF.IA tenta baixar e carregar o modelo padrão ao iniciar quando não houver um instalado.",
-                    checked = settings.autoDownloadDefaultModel,
-                    onCheckedChange = { update(settings.copy(autoDownloadDefaultModel = it)) },
-                )
-                SettingsSwitch(
                     title = "Baixar modelos somente no Wi-Fi",
-                    subtitle = "Quando ativado, o download automático aguarda uma conexão Wi-Fi válida.",
+                    subtitle = "Quando ativado, o download de modelo para Curiosidade exige Wi-Fi válido.",
                     checked = settings.wifiOnlyModelDownloads,
                     onCheckedChange = { update(settings.copy(wifiOnlyModelDownloads = it)) },
                 )
