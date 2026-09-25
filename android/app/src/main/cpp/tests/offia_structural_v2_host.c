@@ -155,6 +155,43 @@ static int check_unrelated(memoria_mobile_handle *h) {
     return 0;
 }
 
+/* Opt-in kernel contract only: live chat still uses the default resolver. */
+static int check_window_group(memoria_mobile_handle *h) {
+    memoria_mobile_buffer out = {0};
+    const char *observations[] = {
+        "{\"hierarchy_id\":\"conversation:window-gate\",\"source_id\":\"fact\",\"source_kind\":\"user_turn\",\"sequence\":1,\"text\":\"Meu pai se chama PessoaA.\"}",
+        "{\"hierarchy_id\":\"conversation:window-gate\",\"source_id\":\"q1\",\"source_kind\":\"user_turn\",\"sequence\":2,\"text\":\"qual nome do meu pai\"}",
+        "{\"hierarchy_id\":\"conversation:window-gate\",\"source_id\":\"q2\",\"source_kind\":\"user_turn\",\"sequence\":3,\"text\":\"qual nome do meu pai?\"}",
+        "{\"hierarchy_id\":\"conversation:window-gate\",\"source_id\":\"q3\",\"source_kind\":\"user_turn\",\"sequence\":4,\"text\":\"qual nome do meu pai \"}",
+        "{\"hierarchy_id\":\"conversation:window-gate\",\"source_id\":\"other\",\"source_kind\":\"user_turn\",\"sequence\":5,\"text\":\"Meu carro é vermelho.\"}",
+        "{\"hierarchy_id\":\"conversation:window-gate\",\"source_id\":\"assistant\",\"source_kind\":\"assistant_generated\",\"sequence\":6,\"text\":\"qual nome do meu pai?\"}"
+    };
+    size_t i;
+    for (i = 0; i < sizeof(observations) / sizeof(observations[0]); ++i) {
+        CHECK(call_json(memoria_mobile_observe_structural_text_json,
+                        h, observations[i], &out) == MEMORIA_MOBILE_OK);
+        clear(&out);
+    }
+    return 0;
+}
+
+static int check_window_group_recall(memoria_mobile_handle *h) {
+    memoria_mobile_buffer out = {0};
+    CHECK(call_json(memoria_mobile_resolve_structural_text_json, h,
+        "{\"hierarchy_id\":\"conversation:window-gate\",\"query\":\"meu pai\","
+        "\"top_k\":3,\"mode\":\"window_group\"}", &out) == MEMORIA_MOBILE_OK);
+    CHECK(contains(out, "Meu pai se chama PessoaA."));
+    CHECK(contains(out, "\"window_id\":\"conversation:window-gate\""));
+    CHECK(contains(out, "\"window_revision\":6"));
+    CHECK(contains(out, "\"source_ids\":[\"q1\",\"q2\",\"q3\"]"));
+    CHECK(contains(out, "\"source_id\":\"q2\",\"source_text\":\"qual nome do meu pai?\",\"source_kind\":\"user_turn\""));
+    CHECK(contains(out, "\"source_id\":\"assistant\",\"source_text\":\"qual nome do meu pai?\",\"source_kind\":\"assistant_generated\""));
+    CHECK(contains(out, "\"trajectory_used\":false"));
+    CHECK(!contains(out, "Meu carro é vermelho."));
+    clear(&out);
+    return 0;
+}
+
 static int check_restart(const char *dir) {
     memoria_mobile_handle *h = NULL;
     memoria_mobile_buffer out = {0};
@@ -215,12 +252,18 @@ int main(void) {
     CHECK(check_fact(h) == 0);
     CHECK(check_conflict_recurrence(h) == 0);
     CHECK(check_unrelated(h) == 0);
+    CHECK(check_window_group(h) == 0);
+    CHECK(check_window_group_recall(h) == 0);
 
     CHECK(memoria_mobile_flush(h) == MEMORIA_MOBILE_OK);
     memoria_mobile_close(h);
     h = NULL;
 
     CHECK(check_restart(dir) == 0);
+
+    CHECK(memoria_mobile_open(dir, "offia-v2-host", &h) == MEMORIA_MOBILE_OK);
+    CHECK(check_window_group_recall(h) == 0);
+    memoria_mobile_close(h);
 
     (void)system("rm -rf ./tmp-offia-v2-native-gate");
     puts("OFF.IA structural V2 native gate: PASS");

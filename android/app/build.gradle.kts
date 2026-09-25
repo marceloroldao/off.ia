@@ -29,8 +29,8 @@ android {
         versionCode = 8
         versionName = "0.1.0-alpha.8-v2-context-test"
         buildConfigField("String", "OFFIA_COMMIT", "\"$offiaBuildCommit\"")
-        buildConfigField("String", "MEMORIA_IA_VERSION", "\"v2-post-rc2-context-fix\"")
-        buildConfigField("String", "MEMORIA_IA_COMMIT", "\"89a9226ac7bf52afff190531bf956b144e64ce82\"")
+        buildConfigField("String", "MEMORIA_IA_VERSION", "\"v2-post-rc2-window-group-opt-in\"")
+        buildConfigField("String", "MEMORIA_IA_COMMIT", "\"4bf16288b809f6b96fa57d0d88d71e57b061a28d\"")
         buildConfigField("String", "BDR_VERSION", "\"v1.2.0-rc4\"")
         buildConfigField("String", "BDR_COMMIT", "\"317882a00f041fc1568ff986af8016b09453f21a\"")
         buildConfigField("String", "LLAMA_CPP_COMMIT", "\"ca3d5a3e10d53f7ea672cb9b6178faca3e2807bc\"")
