@@ -252,6 +252,28 @@ fun OffiaChatScreen() {
         modelReady = true
     }
 
+    fun resetInferenceForConversation() {
+        val modelPath = prefs.getString(PREF_MODEL_PATH, null) ?: return
+        if (!modelReady) return
+        // The pinned llama.cpp engine retains chat messages and KV state across
+        // sendUserPrompt calls. Its public API has no per-conversation reset;
+        // unloading and reloading clears that state before the next response.
+        busy = true
+        modelReady = false
+        status = "Offline • isolando contexto da conversa…"
+        scope.launch {
+            try {
+                modelProbe = loadLocalModel(engine, File(modelPath))
+                modelReady = true
+                status = "Offline • contexto da conversa isolado"
+            } catch (e: Exception) {
+                status = "Erro ao isolar modelo • ${e.message ?: e.javaClass.simpleName}"
+            } finally {
+                busy = false
+            }
+        }
+    }
+
     fun startDefaultModelDownload() {
         if (modelDownloadJob?.isActive == true || busy) return
         val descriptor = ModelCatalog.defaultModel
@@ -612,20 +634,26 @@ fun OffiaChatScreen() {
                 memoryAvailable = memory.available,
                 modelDownloadState = modelDownloadState,
                 onSelectSession = { sessionId ->
-                    saveWorkspace()
-                    activeSessionId = sessionId
-                    loadActiveMessages()
-                    clearLastMemoryStatus()
-                    chatStore.save(ChatWorkspace(sessions.toMutableList(), activeSessionId))
+                    if (!busy && activeSessionId != sessionId) {
+                        saveWorkspace()
+                        activeSessionId = sessionId
+                        loadActiveMessages()
+                        clearLastMemoryStatus()
+                        chatStore.save(ChatWorkspace(sessions.toMutableList(), activeSessionId))
+                        resetInferenceForConversation()
+                    }
                 },
                 onNewConversation = {
-                    saveWorkspace()
-                    val newSession = chatStore.newSession()
-                    sessions += newSession
-                    activeSessionId = newSession.id
-                    messages.clear()
-                    clearLastMemoryStatus()
-                    chatStore.save(ChatWorkspace(sessions.toMutableList(), activeSessionId))
+                    if (!busy) {
+                        saveWorkspace()
+                        val newSession = chatStore.newSession()
+                        sessions += newSession
+                        activeSessionId = newSession.id
+                        messages.clear()
+                        clearLastMemoryStatus()
+                        chatStore.save(ChatWorkspace(sessions.toMutableList(), activeSessionId))
+                        resetInferenceForConversation()
+                    }
                 },
                 onRenameConversation = { newTitle ->
                     activeSession().title = newTitle
@@ -642,6 +670,7 @@ fun OffiaChatScreen() {
                     clearLastMemoryStatus()
                     chatStore.save(ChatWorkspace(sessions.toMutableList(), activeSessionId))
                     status = "Conversa excluída"
+                    resetInferenceForConversation()
                 },
                 onChooseModel = { modelPicker.launch(arrayOf("application/octet-stream", "*/*")) },
                 onDownloadDefaultModel = { startDefaultModelDownload() },
@@ -753,8 +782,8 @@ fun OffiaChatScreen() {
                                 try {
                                     val localResolution = memory.resolve(text, sessionIdForResolve, trajectoryWindow)
                                     val structuralTurn = if (structuralClient != null) {
-                                        status = "Híbrido • resolvendo e registrando texto do usuário na memória estrutural V2…"
-                                        resolveThenObserveUserText(
+                                        status = "Híbrido • registrando texto do usuário na memória estrutural V2…"
+                                        observeUserTextForLaboratory(
                                             client = structuralClient,
                                             userText = text,
                                             sequence = structuralSequence,
@@ -764,7 +793,6 @@ fun OffiaChatScreen() {
                                         StructuralTurnGateResult(null, false)
                                     }
                                     val structuralResolution = structuralTurn.resolution
-                                    val structuralResolutionStatus = structuralResolution?.status
                                     val structuralObserved = structuralTurn.observed
                                     val resolution = selectLaboratoryMemoryResolution(
                                         local = localResolution,
@@ -825,8 +853,8 @@ fun OffiaChatScreen() {
                                     status = when {
                                         structuralClient != null && structuralObserved ->
                                             "Híbrido • ${modelName ?: "GGUF"} • estrutural V2 sincronizada"
-                                        structuralClient != null && structuralResolutionStatus == MemoryStatus.HIT ->
-                                            "Híbrido • ${modelName ?: "GGUF"} • estrutural V2 HIT • sync pendente"
+                                        structuralClient != null ->
+                                            "Híbrido • ${modelName ?: "GGUF"} • observação estrutural pendente"
                                         else ->
                                             "Offline • ${modelName ?: "GGUF"} pronto"
                                     }

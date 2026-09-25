@@ -235,7 +235,7 @@ class MemoriaServerStructuralClientTest {
 
 
     @Test
-    fun laboratorySelectionUsesStructuralOnlyForRealHit() {
+    fun laboratorySelectionRejectsUnscopedStructuralHit() {
         val local = MemoryResolution(
             status = MemoryStatus.HIT,
             contextItems = listOf("contexto local"),
@@ -252,7 +252,7 @@ class MemoriaServerStructuralClientTest {
         )
 
         assertEquals(
-            structuralHit,
+            local,
             selectLaboratoryMemoryResolution(local, structuralHit),
         )
         assertEquals(
@@ -284,7 +284,7 @@ class MemoriaServerStructuralClientTest {
 
 
     @Test
-    fun turnGateAlwaysResolvesBeforeObservingCurrentUserText() = runBlocking {
+    fun turnGateObservesWithSessionWithoutUnscopedResolve() = runBlocking {
         val calls = mutableListOf<String>()
         val client = object : StructuralTextMemoryClient {
             override suspend fun resolve(
@@ -318,7 +318,7 @@ class MemoriaServerStructuralClientTest {
             }
         }
 
-        val gate = resolveThenObserveUserText(
+        val gate = observeUserTextForLaboratory(
             client = client,
             userText = "Meu gato se chama Alt",
             sequence = 4,
@@ -327,17 +327,16 @@ class MemoriaServerStructuralClientTest {
 
         assertEquals(
             listOf(
-                "resolve:Meu gato se chama Alt",
                 "observe:Meu gato se chama Alt:4:session-1",
             ),
             calls,
         )
         assertTrue(gate.observed)
-        assertEquals(MemoryStatus.UNRESOLVED, gate.resolution?.status)
+        assertEquals(null, gate.resolution)
     }
 
     @Test
-    fun turnGateStillObservesUserTextWhenResolveFails() = runBlocking {
+    fun turnGateDoesNotCallTheUnscopedResolveEndpoint() = runBlocking {
         val calls = mutableListOf<String>()
         val client = object : StructuralTextMemoryClient {
             override suspend fun resolve(
@@ -365,14 +364,14 @@ class MemoriaServerStructuralClientTest {
             }
         }
 
-        val gate = resolveThenObserveUserText(
+        val gate = observeUserTextForLaboratory(
             client = client,
             userText = "Hoje acordei feliz",
             sequence = 2,
             sessionId = "session-2",
         )
 
-        assertEquals(listOf("resolve", "observe"), calls)
+        assertEquals(listOf("observe"), calls)
         assertEquals(null, gate.resolution)
         assertTrue(gate.observed)
     }

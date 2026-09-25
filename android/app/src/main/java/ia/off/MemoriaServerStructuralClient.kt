@@ -313,15 +313,16 @@ fun ServerStructuralResolveResult.toMemoryResolution(): MemoryResolution {
 }
 
 
+@Suppress("UNUSED_PARAMETER")
 internal fun selectLaboratoryMemoryResolution(
     local: MemoryResolution,
     structural: MemoryResolution?,
-): MemoryResolution =
-    if (structural?.status == MemoryStatus.HIT && structural.contextItems.isNotEmpty()) {
-        structural
-    } else {
-        local
-    }
+): MemoryResolution {
+    // This server resolve endpoint does not bind or echo a conversation scope.
+    // Its HIT may belong to another chat. Until the scoped contract is available,
+    // the server's experimental result cannot replace local evidence.
+    return local
+}
 
 
 data class StructuralTurnGateResult(
@@ -329,7 +330,7 @@ data class StructuralTurnGateResult(
     val observed: Boolean,
 )
 
-internal suspend fun resolveThenObserveUserText(
+internal suspend fun observeUserTextForLaboratory(
     client: StructuralTextMemoryClient?,
     userText: String,
     sequence: Long,
@@ -338,12 +339,8 @@ internal suspend fun resolveThenObserveUserText(
     if (client == null) {
         return StructuralTurnGateResult(resolution = null, observed = false)
     }
-    val resolution = runCatching {
-        client.resolve(userText).toMemoryResolution()
-    }.getOrNull()
-
-    // Observation intentionally happens only after resolve has completed.
-    // Therefore the current query cannot reinforce its own lookup.
+    // The unscoped server endpoint cannot safely answer this conversation.
+    // Observation still uses this conversation's sessionId for later migration.
     val observed = runCatching {
         client.observeUserText(
             text = userText,
@@ -353,7 +350,7 @@ internal suspend fun resolveThenObserveUserText(
     }.isSuccess
 
     return StructuralTurnGateResult(
-        resolution = resolution,
+        resolution = null,
         observed = observed,
     )
 }
