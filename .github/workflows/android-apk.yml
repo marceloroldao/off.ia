@@ -79,7 +79,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           repository: marceloroldao/memoria.ia
-          ref: 3a70e7179a34b11cfb3812d594036330640a3819
+          ref: 557b84f5bc73637db9e9289f6b9c3b25f483e0a8
           path: android/vendor/memoria.ia
 
       - name: Checkout pinned Resolutive-DB Android ABI
@@ -93,14 +93,15 @@ jobs:
         shell: bash
         run: |
           test "$(git -C android/vendor/llama.cpp rev-parse HEAD)" = "ca3d5a3e10d53f7ea672cb9b6178faca3e2807bc"
-          test "$(git -C android/vendor/memoria.ia rev-parse HEAD)" = "3a70e7179a34b11cfb3812d594036330640a3819"
+          test "$(git -C android/vendor/memoria.ia rev-parse HEAD)" = "557b84f5bc73637db9e9289f6b9c3b25f483e0a8"
           grep -q 'version = "2.0.0rc2"' android/vendor/memoria.ia/pyproject.toml
           grep -q '#define MEMORIA_MOBILE_ABI_VERSION 1' android/vendor/memoria.ia/include/memoria_mobile.h
           grep -q 'memoria_mobile_observe_structural_text_json' android/vendor/memoria.ia/include/memoria_mobile.h
           grep -q 'memoria_mobile_resolve_structural_text_json' android/vendor/memoria.ia/include/memoria_mobile.h
+          grep -q 'memoria_mobile_export_structural_text_json' android/vendor/memoria.ia/include/memoria_mobile.h
           test "$(git -C android/vendor/resolutive-DB rev-parse HEAD)" = "317882a00f041fc1568ff986af8016b09453f21a"
-          grep -Fq 'buildConfigField("String", "MEMORIA_IA_VERSION", "\"v2-post-rc2-collection-surface\"")' android/app/build.gradle.kts
-          grep -Fq 'buildConfigField("String", "MEMORIA_IA_COMMIT", "\"3a70e7179a34b11cfb3812d594036330640a3819\"")' android/app/build.gradle.kts
+          grep -Fq 'buildConfigField("String", "MEMORIA_IA_VERSION", "\"v2-post-rc2-structural-export\"")' android/app/build.gradle.kts
+          grep -Fq 'buildConfigField("String", "MEMORIA_IA_COMMIT", "\"557b84f5bc73637db9e9289f6b9c3b25f483e0a8\"")' android/app/build.gradle.kts
           grep -Fq 'buildConfigField("String", "BDR_VERSION", "\"v1.2.0-rc4\"")' android/app/build.gradle.kts
           grep -Fq 'buildConfigField("String", "BDR_COMMIT", "\"317882a00f041fc1568ff986af8016b09453f21a\"")' android/app/build.gradle.kts
           grep -Fq 'buildConfigField("String", "LLAMA_CPP_COMMIT", "\"ca3d5a3e10d53f7ea672cb9b6178faca3e2807bc\"")' android/app/build.gradle.kts
