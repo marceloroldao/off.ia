@@ -151,7 +151,9 @@ class NativeMemoryGateway(
         val request = JSONObject().apply {
             put("hierarchy_id", structuralHierarchy(sessionId))
             put("source_id", effectiveSourceId)
-            put("source_kind", "user_assertion")
+            // A chat turn can be a question, a hypothesis, or an assertion.
+            // Preserve its origin without declaring its epistemic role here.
+            put("source_kind", "user_turn")
             put("sequence", sequence)
             put("text", text)
         }
