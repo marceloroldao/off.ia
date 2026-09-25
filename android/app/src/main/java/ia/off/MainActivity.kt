@@ -753,8 +753,8 @@ fun OffiaChatScreen() {
                                 try {
                                     val localResolution = memory.resolve(text, sessionIdForResolve, trajectoryWindow)
                                     val structuralTurn = if (structuralClient != null) {
-                                        status = "Híbrido • resolvendo e registrando texto do usuário na memória estrutural V2…"
-                                        resolveThenObserveUserText(
+                                        status = "Híbrido • registrando texto do usuário na memória estrutural V2…"
+                                        observeUserTextForLaboratory(
                                             client = structuralClient,
                                             userText = text,
                                             sequence = structuralSequence,
@@ -764,7 +764,6 @@ fun OffiaChatScreen() {
                                         StructuralTurnGateResult(null, false)
                                     }
                                     val structuralResolution = structuralTurn.resolution
-                                    val structuralResolutionStatus = structuralResolution?.status
                                     val structuralObserved = structuralTurn.observed
                                     val resolution = selectLaboratoryMemoryResolution(
                                         local = localResolution,
@@ -825,8 +824,8 @@ fun OffiaChatScreen() {
                                     status = when {
                                         structuralClient != null && structuralObserved ->
                                             "Híbrido • ${modelName ?: "GGUF"} • estrutural V2 sincronizada"
-                                        structuralClient != null && structuralResolutionStatus == MemoryStatus.HIT ->
-                                            "Híbrido • ${modelName ?: "GGUF"} • estrutural V2 HIT • sync pendente"
+                                        structuralClient != null ->
+                                            "Híbrido • ${modelName ?: "GGUF"} • observação estrutural pendente"
                                         else ->
                                             "Offline • ${modelName ?: "GGUF"} pronto"
                                     }
