@@ -297,7 +297,6 @@ fun ServerStructuralResolveResult.toMemoryResolution(): MemoryResolution {
         .flatMap { it.observationIds }
         .filter { it.isNotBlank() }
         .distinct()
-    val confidence = contexts.maxOfOrNull { it.score }
     return MemoryResolution(
         status = if (mappedStatus == MemoryStatus.HIT && selectedContexts.isEmpty()) {
             MemoryStatus.UNRESOLVED
@@ -306,7 +305,8 @@ fun ServerStructuralResolveResult.toMemoryResolution(): MemoryResolution {
         },
         contextItems = selectedContexts,
         memoryIds = ids,
-        confidence = confidence,
+        // Association score ranks contexts; it is not a calibrated probability.
+        confidence = null,
         trajectoryUsed = false,
         conversationWindowCount = 0,
     )
