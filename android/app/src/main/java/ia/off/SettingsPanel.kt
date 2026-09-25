@@ -120,7 +120,7 @@ fun SettingsPanel(
         ) {
             Text("Configurações", style = MaterialTheme.typography.headlineSmall)
             Text(
-                "OFF.IA é local-first. llama.cpp, Memoria.ia e BDR permanecem locais. Download de modelos e Curiosidade são recursos online explícitos; acesso a transformers externos acontece somente pela rede M2A2.",
+                "O chat local usa os registros da Memoria.ia sem LLM. O modelo llama.cpp fica reservado à Curiosidade, que exige acesso online explícito.",
                 style = MaterialTheme.typography.bodySmall,
             )
 
@@ -293,15 +293,10 @@ fun SettingsPanel(
                 }
             }
 
-            ImproveSettingsSection(
-                settings = settings,
-                onSettingsChanged = { update(it) },
-            )
-
             SettingsSection("Modelos e rede") {
                 SettingsSwitch(
                     title = "Baixar modelo padrão automaticamente",
-                    subtitle = "Quando não houver modelo local, OFF.IA tenta baixar e carregar o modelo padrão ao iniciar.",
+                    subtitle = "Para Curiosidade, OFF.IA tenta baixar e carregar o modelo padrão ao iniciar quando não houver um instalado.",
                     checked = settings.autoDownloadDefaultModel,
                     onCheckedChange = { update(settings.copy(autoDownloadDefaultModel = it)) },
                 )
@@ -313,21 +308,15 @@ fun SettingsPanel(
                 )
                 SettingsSwitch(
                     title = "Bloquear recursos online",
-                    subtitle = "Quando ativado, Curiosidade e a futura rota M2A2 ficam bloqueadas após o onboarding do modelo.",
+                    subtitle = "Quando ativado, Curiosidade fica bloqueada após o download do modelo.",
                     checked = settings.blockNetworkAfterModelDownload,
                     onCheckedChange = { update(settings.copy(blockNetworkAfterModelDownload = it)) },
                 )
             }
 
             SettingsSection("Privacidade") {
-                SettingsSwitch(
-                    title = "Confirmar antes de enviar pela M2A2",
-                    subtitle = "Quando a rota estiver ativa, OFF.IA pedirá confirmação antes de enviar contexto selecionado ao servidor Memoria.ia.",
-                    checked = settings.confirmBeforeM2A2,
-                    onCheckedChange = { update(settings.copy(confirmBeforeM2A2 = it)) },
-                )
-                Text("Transformer externo: somente via M2A2", style = MaterialTheme.typography.labelMedium)
-                Text("Inferência principal: llama.cpp local", style = MaterialTheme.typography.labelMedium)
+                Text("Chat: Memoria.ia local, sem LLM", style = MaterialTheme.typography.labelMedium)
+                Text("LLM local: somente Curiosidade", style = MaterialTheme.typography.labelMedium)
                 Text("Memória: Memoria.ia + BDR local", style = MaterialTheme.typography.labelMedium)
             }
 
