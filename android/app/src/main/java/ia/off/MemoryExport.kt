@@ -19,6 +19,7 @@ suspend fun collectFullMemorySnapshot(memory: MemoryGateway): String {
     var firstPage: JSONObject? = null
     val turns = JSONArray()
     val episodes = JSONArray()
+    val structuralObservations = JSONArray()
 
     while (nextTurn != null || nextEpisode != null) {
         val raw = memory.exportSnapshotPage(turnOffset, episodeOffset, EXPORT_PAGE_LIMIT)
@@ -41,6 +42,26 @@ suspend fun collectFullMemorySnapshot(memory: MemoryGateway): String {
     }
 
     val source = requireNotNull(firstPage) { "Snapshot vazio" }
+    var structuralOffset: Int? = 0
+    var structuralCount = 0
+    var structuralFormat: String? = null
+    while (structuralOffset != null) {
+        val raw = memory.exportStructuralPage(structuralOffset, EXPORT_PAGE_LIMIT)
+            ?: error("Memoria.ia não retornou a trilha estrutural V2")
+        val page = JSONObject(raw)
+        check(page.optString("status") == "OK") { "Exportação estrutural inválida" }
+        if (structuralFormat == null) structuralFormat = page.getString("format")
+        structuralCount = page.getInt("count")
+        page.getJSONArray("observations").let { observations ->
+            for (index in 0 until observations.length()) structuralObservations.put(observations.get(index))
+        }
+        val next = nextOffset(page.getJSONObject("page"))
+        check(next == null || next > structuralOffset) { "Página estrutural não avançou" }
+        structuralOffset = next
+    }
+    check(structuralObservations.length() == structuralCount) {
+        "Exportação estrutural incompleta"
+    }
     val sourceMetadata = JSONObject().apply {
         put("format", source.optString("format"))
         put("abi_version", source.optInt("abi_version"))
@@ -53,10 +74,15 @@ suspend fun collectFullMemorySnapshot(memory: MemoryGateway): String {
 
     return JSONObject().apply {
         put("status", "OK")
-        put("format", "offia.memoria.export.v1")
+        put("format", "offia.memoria.export.v2")
         put("source", sourceMetadata)
         put("turns", turns)
         put("episodes", episodes)
+        put("structural", JSONObject().apply {
+            put("format", structuralFormat)
+            put("count", structuralCount)
+            put("observations", structuralObservations)
+        })
     }.toString(2)
 }
 
