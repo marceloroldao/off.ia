@@ -4,7 +4,7 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
-val offiaBuildCommit = providers.environmentVariable("GITHUB_SHA").orElse("v1.2.0-rc4").get()
+val offiaBuildCommit = providers.environmentVariable("GITHUB_SHA").orElse("desconhecida").get()
 
 android {
     namespace = "ia.off"
