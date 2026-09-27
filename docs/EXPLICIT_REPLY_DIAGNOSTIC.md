@@ -14,6 +14,14 @@ Não converte a resposta em fato e não altera a seleção de contexto do chat.
    `reply_to` com o `source_id` e `sequence` da pergunta. O vínculo é persistido pela
    Memoria.ia/BDR e reaparece após reiniciar o app.
 
+O export também inclui `app.version_name`, os commits do APK e da Memoria.ia e
+`app.laboratory_mode_enabled`. A seção `reply_capture` compara as marcações
+explícitas ainda presentes no chat com os vínculos nativos: `selected_count`,
+`pending_count`, `recorded_count`, `native_link_count` e inconsistências. Ela
+usa apenas endereços e contagens; não classifica o texto como fato. Se uma
+conversa foi apagada do app, o vínculo nativo ainda pode existir sem uma
+marcação correspondente no chat atual.
+
 Sem a seleção explícita, uma nova entrada não recebe `reply_to`, mesmo se vier logo depois
 de uma pergunta. Mensagens geradas pela OFF.IA não podem ser selecionadas como alvo.
 Um vínculo interrompido depois de salvar o chat fica pendente e é tentado novamente quando

@@ -631,8 +631,18 @@ fun OffiaChatScreen() {
                         busy = true
                         status = "Preparando exportação da Memoria.ia…"
                         try {
+                            saveWorkspace()
                             memory.flush()
-                            pendingMemoryExport = collectFullMemorySnapshot(memory)
+                            pendingMemoryExport = collectFullMemorySnapshot(
+                                memory,
+                                workspace = ChatWorkspace(sessions.toMutableList(), activeSessionId),
+                                build = ExportBuildIdentity(
+                                    versionName = BuildConfig.VERSION_NAME,
+                                    offiaCommit = BuildConfig.OFFIA_COMMIT,
+                                    memoriaCommit = BuildConfig.MEMORIA_IA_COMMIT,
+                                    laboratoryModeEnabled = settingsStore.load().laboratoryMode,
+                                ),
+                            )
                             memoryExportPicker.launch("offia-memoria-${System.currentTimeMillis()}.json")
                             status = "Exportação pronta para salvar"
                         } catch (e: Exception) {

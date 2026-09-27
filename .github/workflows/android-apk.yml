@@ -27,6 +27,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       OFFIA_KV_CACHE_TYPE: q8_0
+      OFFIA_BUILD_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
 
     steps:
       - name: Checkout OFF.IA

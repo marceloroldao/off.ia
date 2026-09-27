@@ -4,7 +4,9 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
-val offiaBuildCommit = providers.environmentVariable("GITHUB_SHA").orElse("desconhecida").get()
+val offiaBuildCommit = providers.environmentVariable("OFFIA_BUILD_COMMIT")
+    .orElse(providers.environmentVariable("GITHUB_SHA"))
+    .orElse("desconhecida").get()
 
 android {
     namespace = "ia.off"
@@ -26,8 +28,8 @@ android {
         applicationId = "ia.off"
         minSdk = 33
         targetSdk = 36
-        versionCode = 12
-        versionName = "0.1.0-alpha.12-reply-diagnostic"
+        versionCode = 13
+        versionName = "0.1.0-alpha.13-reply-diagnostic"
         buildConfigField("String", "OFFIA_COMMIT", "\"$offiaBuildCommit\"")
         buildConfigField("String", "MEMORIA_IA_VERSION", "\"v2-explicit-reply-diagnostic\"")
         buildConfigField("String", "MEMORIA_IA_COMMIT", "\"0627e9bd365421e88f5d2a9f6039c807139efb4f\"")
