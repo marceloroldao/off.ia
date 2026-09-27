@@ -88,6 +88,12 @@ interface MemoryGateway {
         target: ExplicitReplyTarget,
     ): Boolean = false
 
+    /** Inspect one exact user target address; never enters the answer path. */
+    suspend fun inspectLinkedReplies(
+        sessionId: String,
+        target: ChatMessage,
+    ): LinkedReplyInspection? = null
+
     /**
      * Delegates approved public/external knowledge to Memoria.ia.
      * OFF.IA supplies acquisition metadata only; authority, deduplication,

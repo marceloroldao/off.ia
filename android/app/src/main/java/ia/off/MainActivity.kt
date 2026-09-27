@@ -9,6 +9,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -222,8 +224,18 @@ fun OffiaChatScreen() {
     var lastWindowCount by remember { mutableIntStateOf(0) }
     var pendingMemoryExport by remember { mutableStateOf<String?>(null) }
     var pendingReplyTarget by remember { mutableStateOf<ChatMessage?>(null) }
+    var inspectingTarget by remember { mutableStateOf<ChatMessage?>(null) }
+    var inspectionResult by remember { mutableStateOf<LinkedReplyInspection?>(null) }
+    var inspectionError by remember { mutableStateOf<String?>(null) }
+    var inspectionRunning by remember { mutableStateOf(false) }
+    var inspectionRequest by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(activeSessionId) {
+        inspectionRequest++
+        inspectingTarget = null
+        inspectionResult = null
+        inspectionError = null
+        inspectionRunning = false
         loadActiveMessages()
         if (memory.available && messages.any { it.replyTo != null && !it.replyRecorded }) {
             busy = true
@@ -560,6 +572,36 @@ fun OffiaChatScreen() {
         }
     }
 
+    inspectingTarget?.let { target ->
+        AlertDialog(
+            onDismissRequest = {
+                inspectionRequest++
+                inspectingTarget = null
+                inspectionRunning = false
+            },
+            title = { Text("Memória desta entrada") },
+            text = {
+                Column(Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState())) {
+                    Text(target.text.take(240), style = MaterialTheme.typography.bodyMedium)
+                    Text("Endereço selecionado na conversa atual. Consulta local de laboratório.")
+                    Text(when {
+                        inspectionRunning -> "Consultando vínculos…"
+                        inspectionError != null -> "Falha: $inspectionError"
+                        inspectionResult != null -> renderLinkedReplyInspection(requireNotNull(inspectionResult))
+                        else -> "Sem resultado."
+                    })
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    inspectionRequest++
+                    inspectingTarget = null
+                    inspectionRunning = false
+                }) { Text("Fechar") }
+            },
+        )
+    }
+
     Scaffold(
         contentWindowInsets = WindowInsets.safeDrawing,
         topBar = {
@@ -857,6 +899,38 @@ fun OffiaChatScreen() {
                     busy = busy,
                     onReplyToUser = if (memory.available && !busy && settingsStore.load().laboratoryMode) {
                         { target -> pendingReplyTarget = target }
+                    } else null,
+                    onInspectLinkedReplies = if (memory.available && !busy &&
+                        settingsStore.load().laboratoryMode) {
+                        { target ->
+                            if (target.role == "Você" && messages.any {
+                                it.id == target.id && it.createdAt == target.createdAt
+                            }) {
+                                val session = activeSessionId
+                                inspectionRequest++
+                                val request = inspectionRequest
+                                inspectingTarget = target
+                                inspectionResult = null
+                                inspectionError = null
+                                inspectionRunning = true
+                                scope.launch {
+                                    try {
+                                        val result = memory.inspectLinkedReplies(session, target)
+                                        if (inspectionRequest == request && activeSessionId == session) {
+                                            inspectionResult = result
+                                        }
+                                    } catch (error: Exception) {
+                                        if (inspectionRequest == request && activeSessionId == session) {
+                                            inspectionError = error.message ?: error.javaClass.simpleName
+                                        }
+                                    } finally {
+                                        if (inspectionRequest == request && activeSessionId == session) {
+                                            inspectionRunning = false
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     } else null,
                     onRegenerate = null,
                     onCuriosity = if (modelReady && curiosityProvider.available) ({ responseId -> runCuriosity(responseId) }) else null,

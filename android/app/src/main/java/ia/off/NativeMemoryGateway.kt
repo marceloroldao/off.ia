@@ -191,6 +191,27 @@ class NativeMemoryGateway(
         true
     }
 
+    override suspend fun inspectLinkedReplies(
+        sessionId: String,
+        target: ChatMessage,
+    ): LinkedReplyInspection = withContext(Dispatchers.IO) {
+        require(sessionId.isNotBlank() && target.role == "Você" &&
+            target.id.isNotBlank() && target.text.isNotBlank() && target.createdAt >= 0) {
+            "Entrada alvo inválida"
+        }
+        val request = JSONObject().apply {
+            put("hierarchy_id", structuralHierarchy(sessionId))
+            put("query", target.text)
+            put("mode", "linked_reply_evidence")
+            put("target_source_id", target.id)
+            put("target_sequence", target.createdAt)
+            put("top_k", 16)
+        }
+        parseLinkedReplyInspection(
+            nativeResolveStructural(requireHandle(), request.toString()),
+        )
+    }
+
     override suspend fun learnExternalKnowledge(source: ExternalKnowledgeSource): ExternalKnowledgeLearnResult =
         withContext(Dispatchers.IO) {
             require(source.content.isNotBlank()) { "Conhecimento público vazio" }

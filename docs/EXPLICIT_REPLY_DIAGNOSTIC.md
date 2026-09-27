@@ -31,3 +31,18 @@ O app mantém o resolvedor atual no fluxo de resposta. O modo nativo
 `linked_reply_evidence` permanece apenas diagnóstico: devolve grupos sem qualificar ou
 escolher uma resposta. Resultados reais precisam de um novo diagnóstico exportado por
 esta versão experimental; o export anterior não contém vínculos.
+
+## Consultar uma entrada no laboratório (alpha.14)
+
+Em uma mensagem anterior do usuário, toque em **Ver vínculos na memória**.
+O app consulta a Memoria.ia local pelo endereço exato da mensagem: conversa,
+`source_id` e `sequence`. Mesmo que o texto apareça em outra conversa, o painel
+mostra somente respostas explicitamente vinculadas à entrada selecionada.
+Exibe a quantidade de vínculos, trilhas diferentes, perguntas repetidas e
+exemplos de entradas vinculadas. `CANDIDATES` e `CONFLICT` descrevem a forma
+dessas trilhas; não são validação da resposta. Esta leitura não alimenta a
+resposta do chat, não escreve memória e não reforça nódulos.
+
+O primeiro export real da alpha.13 já demonstrou uma seleção, uma gravação
+nativa e um vínculo recuperável após reinício. A alpha.14 acrescenta apenas
+a inspeção por endereço no app; ainda requer teste visual no dispositivo.

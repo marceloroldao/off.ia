@@ -223,6 +223,23 @@ static int check_explicit_reply_capture(memoria_mobile_handle *h) {
     CHECK(contains(out, "\"status\":\"CANDIDATES\""));
     CHECK(contains(out, "\"qualified\":false"));
     clear(&out);
+    CHECK(call_json(memoria_mobile_resolve_structural_text_json, h,
+        "{\"hierarchy_id\":\"conversation:reply-gate\","
+        "\"query\":\"Qual nome do meu pai?\",\"mode\":\"linked_reply_evidence\","
+        "\"target_source_id\":\"user-question\",\"target_sequence\":21}",
+        &out) == MEMORIA_MOBILE_UNRESOLVED);
+    CHECK(contains(out, "\"evidence_scope\":\"exact_target\""));
+    CHECK(contains(out, "\"explicit_reply_occurrences\":1"));
+    CHECK(contains(out, "\"answer\":null"));
+    clear(&out);
+    CHECK(call_json(memoria_mobile_resolve_structural_text_json, h,
+        "{\"hierarchy_id\":\"conversation:other\","
+        "\"query\":\"Qual nome do meu pai?\",\"mode\":\"linked_reply_evidence\","
+        "\"target_source_id\":\"user-question\",\"target_sequence\":21}",
+        &out) == MEMORIA_MOBILE_UNRESOLVED);
+    CHECK(contains(out, "\"status\":\"UNRESOLVED\""));
+    CHECK(contains(out, "\"groups\":[]"));
+    clear(&out);
     return 0;
 }
 
