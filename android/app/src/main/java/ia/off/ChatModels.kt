@@ -47,6 +47,9 @@ data class GenerationMetadata(
     val publicKnowledge: PublicKnowledgeAudit? = null,
 )
 
+/** A user-selected address in the same conversation, not an inferred answer. */
+data class ExplicitReplyTarget(val sourceId: String, val sequence: Long)
+
 data class ChatMessage(
     val id: String = UUID.randomUUID().toString(),
     val role: String,
@@ -55,4 +58,6 @@ data class ChatMessage(
     val memory: ResponseMemoryMetadata? = null,
     val generation: GenerationMetadata? = null,
     val improvements: List<ImprovementRecord> = emptyList(),
+    val replyTo: ExplicitReplyTarget? = null,
+    val replyRecorded: Boolean = false,
 )

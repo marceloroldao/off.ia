@@ -9,6 +9,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -203,8 +205,6 @@ fun OffiaChatScreen() {
         chatStore.save(ChatWorkspace(sessions.toMutableList(), activeSessionId))
     }
 
-    LaunchedEffect(Unit) { loadActiveMessages() }
-
     val engine = remember { AiChat.getInferenceEngine(appContext) }
     val memory: MemoryGateway = remember {
         try { NativeMemoryGateway(appContext) } catch (_: Throwable) { UnavailableMemoryGateway }
@@ -223,6 +223,29 @@ fun OffiaChatScreen() {
     var lastTrajectoryUsed by remember { mutableStateOf(false) }
     var lastWindowCount by remember { mutableIntStateOf(0) }
     var pendingMemoryExport by remember { mutableStateOf<String?>(null) }
+    var pendingReplyTarget by remember { mutableStateOf<ChatMessage?>(null) }
+    var inspectingTarget by remember { mutableStateOf<ChatMessage?>(null) }
+    var inspectionResult by remember { mutableStateOf<LinkedReplyInspection?>(null) }
+    var inspectionError by remember { mutableStateOf<String?>(null) }
+    var inspectionRunning by remember { mutableStateOf(false) }
+    var inspectionRequest by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(activeSessionId) {
+        inspectionRequest++
+        inspectingTarget = null
+        inspectionResult = null
+        inspectionError = null
+        inspectionRunning = false
+        loadActiveMessages()
+        if (memory.available && messages.any { it.replyTo != null && !it.replyRecorded }) {
+            busy = true
+            try {
+                if (recoverExplicitReplies(memory, activeSessionId, messages) > 0) saveWorkspace()
+            } finally {
+                busy = false
+            }
+        }
+    }
 
     DisposableEffect(memory, modelDownloader) {
         onDispose {
@@ -549,6 +572,36 @@ fun OffiaChatScreen() {
         }
     }
 
+    inspectingTarget?.let { target ->
+        AlertDialog(
+            onDismissRequest = {
+                inspectionRequest++
+                inspectingTarget = null
+                inspectionRunning = false
+            },
+            title = { Text("Memória desta entrada") },
+            text = {
+                Column(Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState())) {
+                    Text(target.text.take(240), style = MaterialTheme.typography.bodyMedium)
+                    Text("Endereço selecionado na conversa atual. Consulta local de laboratório.")
+                    Text(when {
+                        inspectionRunning -> "Consultando vínculos…"
+                        inspectionError != null -> "Falha: $inspectionError"
+                        inspectionResult != null -> renderLinkedReplyInspection(requireNotNull(inspectionResult))
+                        else -> "Sem resultado."
+                    })
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    inspectionRequest++
+                    inspectingTarget = null
+                    inspectionRunning = false
+                }) { Text("Fechar") }
+            },
+        )
+    }
+
     Scaffold(
         contentWindowInsets = WindowInsets.safeDrawing,
         topBar = {
@@ -571,6 +624,7 @@ fun OffiaChatScreen() {
                     if (!busy && activeSessionId != sessionId) {
                         saveWorkspace()
                         activeSessionId = sessionId
+                        pendingReplyTarget = null
                         loadActiveMessages()
                         clearLastMemoryStatus()
                         chatStore.save(ChatWorkspace(sessions.toMutableList(), activeSessionId))
@@ -583,6 +637,7 @@ fun OffiaChatScreen() {
                         val newSession = chatStore.newSession()
                         sessions += newSession
                         activeSessionId = newSession.id
+                        pendingReplyTarget = null
                         messages.clear()
                         clearLastMemoryStatus()
                         chatStore.save(ChatWorkspace(sessions.toMutableList(), activeSessionId))
@@ -600,6 +655,7 @@ fun OffiaChatScreen() {
                     sessions.removeAll { it.id == deletingId }
                     if (sessions.isEmpty()) sessions += chatStore.newSession()
                     activeSessionId = sessions.maxByOrNull { it.updatedAt }?.id ?: sessions.first().id
+                    pendingReplyTarget = null
                     loadActiveMessages()
                     clearLastMemoryStatus()
                     chatStore.save(ChatWorkspace(sessions.toMutableList(), activeSessionId))
@@ -617,8 +673,18 @@ fun OffiaChatScreen() {
                         busy = true
                         status = "Preparando exportação da Memoria.ia…"
                         try {
+                            saveWorkspace()
                             memory.flush()
-                            pendingMemoryExport = collectFullMemorySnapshot(memory)
+                            pendingMemoryExport = collectFullMemorySnapshot(
+                                memory,
+                                workspace = ChatWorkspace(sessions.toMutableList(), activeSessionId),
+                                build = ExportBuildIdentity(
+                                    versionName = BuildConfig.VERSION_NAME,
+                                    offiaCommit = BuildConfig.OFFIA_COMMIT,
+                                    memoriaCommit = BuildConfig.MEMORIA_IA_COMMIT,
+                                    laboratoryModeEnabled = settingsStore.load().laboratoryMode,
+                                ),
+                            )
                             memoryExportPicker.launch("offia-memoria-${System.currentTimeMillis()}.json")
                             status = "Exportação pronta para salvar"
                         } catch (e: Exception) {
@@ -636,6 +702,12 @@ fun OffiaChatScreen() {
             Column(
                 Modifier.fillMaxWidth().imePadding().navigationBarsPadding().padding(horizontal = 12.dp, vertical = 10.dp),
             ) {
+                pendingReplyTarget?.let { target ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Resposta vinculada à entrada selecionada", style = MaterialTheme.typography.labelSmall)
+                        TextButton(onClick = { pendingReplyTarget = null }) { Text("Cancelar vínculo") }
+                    }
+                }
                 val memoryLabel = when (lastMemoryStatus) {
                     MemoryStatus.HIT -> "HIT"
                     MemoryStatus.MISS -> "MISS"
@@ -665,6 +737,9 @@ fun OffiaChatScreen() {
                         onClick = {
                             val text = input.trim()
                             val sessionIdForResolve = activeSessionId
+                            val userSequence = nextUserSequence(messages, System.currentTimeMillis())
+                            val explicitReply = selectedReplyTarget(messages, pendingReplyTarget, userSequence)
+                            pendingReplyTarget = null
                             val structuralSequence = messages.count { it.role == "Você" }.toLong()
                             val runtimeSettings = settingsStore.load()
                             val structuralBinding = if (
@@ -696,7 +771,9 @@ fun OffiaChatScreen() {
                             val userMessage = ChatMessage(
                                 role = "Você",
                                 text = text,
+                                createdAt = userSequence,
                                 generation = GenerationMetadata(source = ResponseSource.USER),
+                                replyTo = explicitReply,
                             )
                             messages += userMessage
                             messages += ChatMessage(
@@ -754,6 +831,21 @@ fun OffiaChatScreen() {
                                         sourceId = userMessage.id,
                                         sequence = userMessage.createdAt,
                                     )
+                                    var replyPending = false
+                                    if (explicitReply != null) {
+                                        val linked = runCatching {
+                                            memory.linkUserReply(
+                                                sessionIdForResolve,
+                                                userMessage.id,
+                                                userMessage.createdAt,
+                                                explicitReply,
+                                            )
+                                        }.getOrDefault(false)
+                                        if (linked) {
+                                            val userIndex = messages.indexOfFirst { it.id == userMessage.id }
+                                            if (userIndex >= 0) messages[userIndex] = messages[userIndex].copy(replyRecorded = true)
+                                        } else replyPending = true
+                                    }
                                     memory.flush()
                                     if (learned.memoryIds.isNotEmpty()) {
                                         val currentMemory = messages[responseIndex].memory
@@ -765,6 +857,8 @@ fun OffiaChatScreen() {
                                     }
                                     saveWorkspace()
                                     status = when {
+                                        replyPending -> "Offline • vínculo explícito pendente; a observação foi preservada"
+                                        explicitReply != null -> "Offline • vínculo explícito registrado na Memoria.ia"
                                         structuralClient != null && structuralObserved ->
                                             "Híbrido • Memoria.ia • observação estrutural sincronizada"
                                         structuralClient != null ->
@@ -803,6 +897,41 @@ fun OffiaChatScreen() {
                 MessageCard(
                     message = message,
                     busy = busy,
+                    onReplyToUser = if (memory.available && !busy && settingsStore.load().laboratoryMode) {
+                        { target -> pendingReplyTarget = target }
+                    } else null,
+                    onInspectLinkedReplies = if (memory.available && !busy &&
+                        settingsStore.load().laboratoryMode) {
+                        { target ->
+                            if (target.role == "Você" && messages.any {
+                                it.id == target.id && it.createdAt == target.createdAt
+                            }) {
+                                val session = activeSessionId
+                                inspectionRequest++
+                                val request = inspectionRequest
+                                inspectingTarget = target
+                                inspectionResult = null
+                                inspectionError = null
+                                inspectionRunning = true
+                                scope.launch {
+                                    try {
+                                        val result = memory.inspectLinkedReplies(session, target)
+                                        if (inspectionRequest == request && activeSessionId == session) {
+                                            inspectionResult = result
+                                        }
+                                    } catch (error: Exception) {
+                                        if (inspectionRequest == request && activeSessionId == session) {
+                                            inspectionError = error.message ?: error.javaClass.simpleName
+                                        }
+                                    } finally {
+                                        if (inspectionRequest == request && activeSessionId == session) {
+                                            inspectionRunning = false
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } else null,
                     onRegenerate = null,
                     onCuriosity = if (modelReady && curiosityProvider.available) ({ responseId -> runCuriosity(responseId) }) else null,
                 )

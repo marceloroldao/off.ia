@@ -41,6 +41,8 @@ fun MessageCard(
     onRegenerate: ((String) -> Unit)? = null,
     onCuriosity: ((String) -> Unit)? = null,
     onImprove: ((String) -> Unit)? = null,
+    onReplyToUser: ((ChatMessage) -> Unit)? = null,
+    onInspectLinkedReplies: ((ChatMessage) -> Unit)? = null,
 ) {
     val clipboard = LocalClipboardManager.current
     val context = LocalContext.current
@@ -173,6 +175,17 @@ fun MessageCard(
                     text = message.text,
                     modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
                 )
+            }
+
+            if (isUser && laboratoryMode && onReplyToUser != null) {
+                TextButton(enabled = !busy, onClick = { onReplyToUser(message) }) {
+                    Text("Responder a esta entrada")
+                }
+            }
+            if (isUser && laboratoryMode && onInspectLinkedReplies != null) {
+                TextButton(enabled = !busy, onClick = { onInspectLinkedReplies(message) }) {
+                    Text("Ver vínculos na memória")
+                }
             }
 
             if (!isUser && message.text != "…") {

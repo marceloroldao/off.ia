@@ -5,11 +5,22 @@ import org.json.JSONObject
 
 private const val EXPORT_PAGE_LIMIT = 64
 
+data class ExportBuildIdentity(
+    val versionName: String,
+    val offiaCommit: String,
+    val memoriaCommit: String,
+    val laboratoryModeEnabled: Boolean,
+)
+
 /**
  * Collects Memoria.ia's bounded diagnostic pages into one portable OFF.IA file.
  * The semantic content is copied verbatim; OFF.IA does not interpret or mutate it.
  */
-suspend fun collectFullMemorySnapshot(memory: MemoryGateway): String {
+suspend fun collectFullMemorySnapshot(
+    memory: MemoryGateway,
+    workspace: ChatWorkspace? = null,
+    build: ExportBuildIdentity? = null,
+): String {
     check(memory.available) { "Memoria.ia indisponível" }
 
     var turnOffset = 0
@@ -83,7 +94,64 @@ suspend fun collectFullMemorySnapshot(memory: MemoryGateway): String {
             put("count", structuralCount)
             put("observations", structuralObservations)
         })
+        build?.let { identity ->
+            put("app", JSONObject().apply {
+                put("version_name", identity.versionName)
+                put("offia_commit", identity.offiaCommit)
+                put("memoria_commit", identity.memoriaCommit)
+                put("laboratory_mode_enabled", identity.laboratoryModeEnabled)
+            })
+        }
+        workspace?.let { put("reply_capture", replyCaptureSummary(it, structuralObservations)) }
     }.toString(2)
+}
+
+/** Counts only explicit UI selections and native links; no semantic classification. */
+private fun replyCaptureSummary(workspace: ChatWorkspace, observations: JSONArray): JSONObject {
+    val nativeLinks = buildSet {
+        for (index in 0 until observations.length()) {
+            val item = observations.optJSONObject(index) ?: continue
+            if (item.optJSONObject("reply_to") == null) continue
+            add(Triple(item.optString("hierarchy_id"), item.optString("source_id"), item.optLong("sequence")))
+        }
+    }
+    var selected = 0
+    var recorded = 0
+    var pending = 0
+    var recordedMissingNative = 0
+    var pendingWithNative = 0
+    workspace.sessions.forEach { session ->
+        session.messages.forEach { message ->
+            if (message.role == "Você" && message.replyTo != null) {
+                selected++
+                val address = Triple("conversation:${session.id}", message.id, message.createdAt)
+                if (message.replyRecorded) {
+                    recorded++
+                    if (address !in nativeLinks) recordedMissingNative++
+                } else {
+                    pending++
+                    if (address in nativeLinks) pendingWithNative++
+                }
+            }
+        }
+    }
+    val captureStatus = when {
+        recordedMissingNative > 0 -> "RECORDED_MISSING_NATIVE"
+        pending > 0 -> "PENDING"
+        nativeLinks.isNotEmpty() -> "LINKED"
+        selected == 0 -> "NO_SELECTION_RECORDED"
+        else -> "NO_NATIVE_LINK"
+    }
+    return JSONObject().apply {
+        put("format", "offia.reply-capture.v1")
+        put("status", captureStatus)
+        put("selected_count", selected)
+        put("recorded_count", recorded)
+        put("pending_count", pending)
+        put("native_link_count", nativeLinks.size)
+        put("recorded_missing_native_count", recordedMissingNative)
+        put("pending_with_native_count", pendingWithNative)
+    }
 }
 
 private fun nextOffset(page: JSONObject): Int? =
