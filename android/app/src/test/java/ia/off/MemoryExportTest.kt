@@ -17,7 +17,7 @@ class MemoryExportTest {
 
             override suspend fun exportStructuralPage(offset: Int, limit: Int): String = when (offset) {
                 0 -> """{"status":"OK","format":"memoria.mobile.structural-text.v1","count":2,"page":{"next_offset":1},"observations":[{"hierarchy_id":"conversation:s1","source_id":"u1","source_kind":"user_turn","sequence":11,"text":"Tenho um gato chamado Alt."}]}"""
-                1 -> """{"status":"OK","format":"memoria.mobile.structural-text.v1","count":2,"page":{"next_offset":null},"observations":[{"hierarchy_id":"conversation:s1","source_id":"u2","source_kind":"user_turn","sequence":12,"text":"Também conheço um gato chamado Nino."}]}"""
+                1 -> """{"status":"OK","format":"memoria.mobile.structural-text.v1","count":2,"page":{"next_offset":null},"observations":[{"hierarchy_id":"conversation:s1","source_id":"u2","source_kind":"user_turn","sequence":12,"text":"Também conheço um gato chamado Nino.","reply_to":{"source_id":"u1","sequence":11}}]}"""
                 else -> error("offset inesperado: $offset")
             }
         }
@@ -30,5 +30,6 @@ class MemoryExportTest {
         assertEquals("u1", entries.getJSONObject(0).getString("source_id"))
         assertEquals("conversation:s1", entries.getJSONObject(1).getString("hierarchy_id"))
         assertTrue(entries.getJSONObject(1).getString("text").contains("Nino"))
+        assertEquals("u1", entries.getJSONObject(1).getJSONObject("reply_to").getString("source_id"))
     }
 }

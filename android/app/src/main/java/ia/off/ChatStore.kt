@@ -33,8 +33,8 @@ data class ChatInteraction(
  */
 class ChatStore(context: Context) {
     companion object {
-        private const val SCHEMA_VERSION = 4
-        private val READABLE_SCHEMA_VERSIONS = setOf(2, 3, SCHEMA_VERSION)
+        private const val SCHEMA_VERSION = 5
+        private val READABLE_SCHEMA_VERSIONS = setOf(2, 3, 4, SCHEMA_VERSION)
         private const val FILE_NAME = "chat-workspace-v2.json"
         private const val LEGACY_FILE_NAME = "chat-history-v1.json"
         private const val MAX_MESSAGES_PER_SESSION = 2000
@@ -210,6 +210,13 @@ class ChatStore(context: Context) {
         put("role", message.role)
         put("text", message.text)
         put("created_at", message.createdAt)
+        message.replyTo?.let { target ->
+            put("reply_to", JSONObject().apply {
+                put("source_id", target.sourceId)
+                put("sequence", target.sequence)
+            })
+            put("reply_recorded", message.replyRecorded)
+        }
 
         message.memory?.let { memory ->
             put("memory", JSONObject().apply {
@@ -394,6 +401,14 @@ class ChatStore(context: Context) {
             memory = memory,
             generation = generation,
             improvements = improvements,
+            replyTo = json.optJSONObject("reply_to")?.let { target ->
+                val sourceId = target.optString("source_id")
+                val sequence = target.optLong("sequence", -1)
+                if (sourceId.isNotBlank() && sequence >= 0) {
+                    ExplicitReplyTarget(sourceId, sequence)
+                } else null
+            },
+            replyRecorded = json.optBoolean("reply_recorded", false),
         )
     }
 

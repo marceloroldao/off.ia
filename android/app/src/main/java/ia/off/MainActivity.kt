@@ -203,8 +203,6 @@ fun OffiaChatScreen() {
         chatStore.save(ChatWorkspace(sessions.toMutableList(), activeSessionId))
     }
 
-    LaunchedEffect(Unit) { loadActiveMessages() }
-
     val engine = remember { AiChat.getInferenceEngine(appContext) }
     val memory: MemoryGateway = remember {
         try { NativeMemoryGateway(appContext) } catch (_: Throwable) { UnavailableMemoryGateway }
@@ -223,6 +221,19 @@ fun OffiaChatScreen() {
     var lastTrajectoryUsed by remember { mutableStateOf(false) }
     var lastWindowCount by remember { mutableIntStateOf(0) }
     var pendingMemoryExport by remember { mutableStateOf<String?>(null) }
+    var pendingReplyTarget by remember { mutableStateOf<ChatMessage?>(null) }
+
+    LaunchedEffect(activeSessionId) {
+        loadActiveMessages()
+        if (memory.available && messages.any { it.replyTo != null && !it.replyRecorded }) {
+            busy = true
+            try {
+                if (recoverExplicitReplies(memory, activeSessionId, messages) > 0) saveWorkspace()
+            } finally {
+                busy = false
+            }
+        }
+    }
 
     DisposableEffect(memory, modelDownloader) {
         onDispose {
@@ -571,6 +582,7 @@ fun OffiaChatScreen() {
                     if (!busy && activeSessionId != sessionId) {
                         saveWorkspace()
                         activeSessionId = sessionId
+                        pendingReplyTarget = null
                         loadActiveMessages()
                         clearLastMemoryStatus()
                         chatStore.save(ChatWorkspace(sessions.toMutableList(), activeSessionId))
@@ -583,6 +595,7 @@ fun OffiaChatScreen() {
                         val newSession = chatStore.newSession()
                         sessions += newSession
                         activeSessionId = newSession.id
+                        pendingReplyTarget = null
                         messages.clear()
                         clearLastMemoryStatus()
                         chatStore.save(ChatWorkspace(sessions.toMutableList(), activeSessionId))
@@ -600,6 +613,7 @@ fun OffiaChatScreen() {
                     sessions.removeAll { it.id == deletingId }
                     if (sessions.isEmpty()) sessions += chatStore.newSession()
                     activeSessionId = sessions.maxByOrNull { it.updatedAt }?.id ?: sessions.first().id
+                    pendingReplyTarget = null
                     loadActiveMessages()
                     clearLastMemoryStatus()
                     chatStore.save(ChatWorkspace(sessions.toMutableList(), activeSessionId))
@@ -636,6 +650,12 @@ fun OffiaChatScreen() {
             Column(
                 Modifier.fillMaxWidth().imePadding().navigationBarsPadding().padding(horizontal = 12.dp, vertical = 10.dp),
             ) {
+                pendingReplyTarget?.let { target ->
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        Text("Resposta vinculada à entrada selecionada", style = MaterialTheme.typography.labelSmall)
+                        TextButton(onClick = { pendingReplyTarget = null }) { Text("Cancelar vínculo") }
+                    }
+                }
                 val memoryLabel = when (lastMemoryStatus) {
                     MemoryStatus.HIT -> "HIT"
                     MemoryStatus.MISS -> "MISS"
@@ -665,6 +685,9 @@ fun OffiaChatScreen() {
                         onClick = {
                             val text = input.trim()
                             val sessionIdForResolve = activeSessionId
+                            val userSequence = nextUserSequence(messages, System.currentTimeMillis())
+                            val explicitReply = selectedReplyTarget(messages, pendingReplyTarget, userSequence)
+                            pendingReplyTarget = null
                             val structuralSequence = messages.count { it.role == "Você" }.toLong()
                             val runtimeSettings = settingsStore.load()
                             val structuralBinding = if (
@@ -696,7 +719,9 @@ fun OffiaChatScreen() {
                             val userMessage = ChatMessage(
                                 role = "Você",
                                 text = text,
+                                createdAt = userSequence,
                                 generation = GenerationMetadata(source = ResponseSource.USER),
+                                replyTo = explicitReply,
                             )
                             messages += userMessage
                             messages += ChatMessage(
@@ -754,6 +779,21 @@ fun OffiaChatScreen() {
                                         sourceId = userMessage.id,
                                         sequence = userMessage.createdAt,
                                     )
+                                    var replyPending = false
+                                    if (explicitReply != null) {
+                                        val linked = runCatching {
+                                            memory.linkUserReply(
+                                                sessionIdForResolve,
+                                                userMessage.id,
+                                                userMessage.createdAt,
+                                                explicitReply,
+                                            )
+                                        }.getOrDefault(false)
+                                        if (linked) {
+                                            val userIndex = messages.indexOfFirst { it.id == userMessage.id }
+                                            if (userIndex >= 0) messages[userIndex] = messages[userIndex].copy(replyRecorded = true)
+                                        } else replyPending = true
+                                    }
                                     memory.flush()
                                     if (learned.memoryIds.isNotEmpty()) {
                                         val currentMemory = messages[responseIndex].memory
@@ -765,6 +805,8 @@ fun OffiaChatScreen() {
                                     }
                                     saveWorkspace()
                                     status = when {
+                                        replyPending -> "Offline • vínculo explícito pendente; a observação foi preservada"
+                                        explicitReply != null -> "Offline • vínculo explícito registrado na Memoria.ia"
                                         structuralClient != null && structuralObserved ->
                                             "Híbrido • Memoria.ia • observação estrutural sincronizada"
                                         structuralClient != null ->
@@ -803,6 +845,9 @@ fun OffiaChatScreen() {
                 MessageCard(
                     message = message,
                     busy = busy,
+                    onReplyToUser = if (memory.available && !busy && settingsStore.load().laboratoryMode) {
+                        { target -> pendingReplyTarget = target }
+                    } else null,
                     onRegenerate = null,
                     onCuriosity = if (modelReady && curiosityProvider.available) ({ responseId -> runCuriosity(responseId) }) else null,
                 )

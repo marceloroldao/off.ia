@@ -1,0 +1,25 @@
+# Captura experimental de respostas explícitas
+
+Esta integração depende da Memoria.ia experimental em `marceloroldao/memoria.ia#374`.
+Ela registra proveniência observada entre duas entradas do usuário na mesma conversa.
+Não converte a resposta em fato e não altera a seleção de contexto do chat.
+
+## Reproduzir no aplicativo de laboratório
+
+1. Ative o modo de laboratório e envie uma pergunta, por exemplo, “Qual nome do meu pai?”.
+2. Toque em **Responder a esta entrada** na própria mensagem do usuário.
+3. Digite uma nova entrada, por exemplo, “Meu pai se chama PessoaA.”, e envie.
+4. Em configurações, toque em **Exportar diagnóstico**.
+5. No JSON exportado, procure a segunda entrada em `structural.observations`: ela deve conter
+   `reply_to` com o `source_id` e `sequence` da pergunta. O vínculo é persistido pela
+   Memoria.ia/BDR e reaparece após reiniciar o app.
+
+Sem a seleção explícita, uma nova entrada não recebe `reply_to`, mesmo se vier logo depois
+de uma pergunta. Mensagens geradas pela OFF.IA não podem ser selecionadas como alvo.
+Um vínculo interrompido depois de salvar o chat fica pendente e é tentado novamente quando
+a conversa é aberta; a operação nativa é idempotente.
+
+O app mantém o resolvedor atual no fluxo de resposta. O modo nativo
+`linked_reply_evidence` permanece apenas diagnóstico: devolve grupos sem qualificar ou
+escolher uma resposta. Resultados reais precisam de um novo diagnóstico exportado por
+esta versão experimental; o export anterior não contém vínculos.

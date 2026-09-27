@@ -80,6 +80,14 @@ interface MemoryGateway {
         sequence: Long = 0L,
     ): MemoryLearnResult = learnTurn(text, "")
 
+    /** Persist only a reply address the user explicitly selected. */
+    suspend fun linkUserReply(
+        sessionId: String,
+        sourceId: String,
+        sequence: Long,
+        target: ExplicitReplyTarget,
+    ): Boolean = false
+
     /**
      * Delegates approved public/external knowledge to Memoria.ia.
      * OFF.IA supplies acquisition metadata only; authority, deduplication,

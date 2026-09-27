@@ -166,6 +166,31 @@ class NativeMemoryGateway(
         MemoryLearnResult(memoryIds = listOf(effectiveSourceId))
     }
 
+    override suspend fun linkUserReply(
+        sessionId: String,
+        sourceId: String,
+        sequence: Long,
+        target: ExplicitReplyTarget,
+    ): Boolean = withContext(Dispatchers.IO) {
+        require(sessionId.isNotBlank() && sourceId.isNotBlank() && target.sourceId.isNotBlank()) {
+            "Endereço de resposta incompleto"
+        }
+        require(target.sequence >= 0 && sequence > target.sequence && sourceId != target.sourceId) {
+            "Resposta deve apontar para uma entrada anterior"
+        }
+        val request = JSONObject().apply {
+            put("hierarchy_id", structuralHierarchy(sessionId))
+            put("source_id", sourceId)
+            put("sequence", sequence)
+            put("reply_to_source_id", target.sourceId)
+            put("reply_to_sequence", target.sequence)
+        }
+        val result = JSONObject(nativeLinkStructuralReply(requireHandle(), request.toString()))
+        check(result.optString("status") == "OK" && result.optString("relation") == "reply_to" &&
+            !result.optBoolean("qualified", true)) { "Memoria.ia rejeitou vínculo explícito" }
+        true
+    }
+
     override suspend fun learnExternalKnowledge(source: ExternalKnowledgeSource): ExternalKnowledgeLearnResult =
         withContext(Dispatchers.IO) {
             require(source.content.isNotBlank()) { "Conhecimento público vazio" }
@@ -272,6 +297,7 @@ class NativeMemoryGateway(
     private external fun nativeResolve(handle: Long, requestJson: String): String
     private external fun nativeResolveStructural(handle: Long, requestJson: String): String
     private external fun nativeObserveStructural(handle: Long, requestJson: String): String
+    private external fun nativeLinkStructuralReply(handle: Long, requestJson: String): String
     private external fun nativeLearn(handle: Long, user: String, assistant: String): String
     private external fun nativeLearnExternal(handle: Long, requestJson: String): String
     private external fun nativeExport(handle: Long, requestJson: String): String

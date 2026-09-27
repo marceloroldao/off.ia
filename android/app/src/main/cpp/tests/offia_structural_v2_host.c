@@ -192,6 +192,40 @@ static int check_window_group_recall(memoria_mobile_handle *h) {
     return 0;
 }
 
+/* The UI links only user-selected source addresses; the diagnostic never selects an answer. */
+static int check_explicit_reply_capture(memoria_mobile_handle *h) {
+    memoria_mobile_buffer out = {0};
+    const char *link = "{\"hierarchy_id\":\"conversation:reply-gate\","
+        "\"source_id\":\"user-reply\",\"sequence\":22,"
+        "\"reply_to_source_id\":\"user-question\",\"reply_to_sequence\":21}";
+    CHECK(observe(h, "conversation:reply-gate", "user-question", 21,
+        "Qual nome do meu pai?") == 0);
+    CHECK(observe(h, "conversation:reply-gate", "user-reply", 22,
+        "Meu pai se chama PessoaA.") == 0);
+    CHECK(call_json(memoria_mobile_link_structural_reply_json, h, link, &out)
+        == MEMORIA_MOBILE_OK);
+    CHECK(contains(out, "\"duplicate\":false"));
+    CHECK(contains(out, "\"qualified\":false"));
+    clear(&out);
+    CHECK(call_json(memoria_mobile_link_structural_reply_json, h, link, &out)
+        == MEMORIA_MOBILE_OK);
+    CHECK(contains(out, "\"duplicate\":true"));
+    clear(&out);
+    CHECK(call_json(memoria_mobile_export_structural_text_json, h,
+        "{\"offset\":0,\"limit\":64}", &out) == MEMORIA_MOBILE_OK);
+    CHECK(contains(out, "\"source_id\":\"user-reply\""));
+    CHECK(contains(out, "\"reply_to\":{\"source_id\":\"user-question\",\"sequence\":21}"));
+    clear(&out);
+    CHECK(call_json(memoria_mobile_resolve_structural_text_json, h,
+        "{\"hierarchy_id\":\"conversation:reply-gate\","
+        "\"query\":\"Qual nome do meu pai?\",\"mode\":\"linked_reply_evidence\"}",
+        &out) == MEMORIA_MOBILE_UNRESOLVED);
+    CHECK(contains(out, "\"status\":\"CANDIDATES\""));
+    CHECK(contains(out, "\"qualified\":false"));
+    clear(&out);
+    return 0;
+}
+
 static int check_restart(const char *dir) {
     memoria_mobile_handle *h = NULL;
     memoria_mobile_buffer out = {0};
@@ -254,6 +288,7 @@ int main(void) {
     CHECK(check_unrelated(h) == 0);
     CHECK(check_window_group(h) == 0);
     CHECK(check_window_group_recall(h) == 0);
+    CHECK(check_explicit_reply_capture(h) == 0);
 
     CHECK(memoria_mobile_flush(h) == MEMORIA_MOBILE_OK);
     memoria_mobile_close(h);
@@ -263,6 +298,13 @@ int main(void) {
 
     CHECK(memoria_mobile_open(dir, "offia-v2-host", &h) == MEMORIA_MOBILE_OK);
     CHECK(check_window_group_recall(h) == 0);
+    {
+        memoria_mobile_buffer out = {0};
+        CHECK(call_json(memoria_mobile_export_structural_text_json, h,
+            "{\"offset\":0,\"limit\":64}", &out) == MEMORIA_MOBILE_OK);
+        CHECK(contains(out, "\"reply_to\":{\"source_id\":\"user-question\",\"sequence\":21}"));
+        clear(&out);
+    }
     memoria_mobile_close(h);
 
     (void)system("rm -rf ./tmp-offia-v2-native-gate");
